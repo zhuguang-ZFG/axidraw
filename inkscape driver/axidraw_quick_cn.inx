@@ -19,18 +19,18 @@
 <param name="grbl_return_to_origin_after_plot" type="bool" gui-text="完成后自动回工作原点">true</param>
 <param name="auto_sparse_linework" type="bool" gui-text="自动降级密排线稿">true</param>
 <param name="grbl_path_optim_mode" type="optiongroup" appearance="combo" gui-text="绘图机路径优化档位：">
-  <option value="standard">标准（推荐）</option>
+  <option value="aggressive">激进（推荐）</option>
+  <option value="standard">标准</option>
   <option value="conservative">保守</option>
-  <option value="aggressive">激进</option>
   <option value="off">关闭额外清理</option>
 </param>
 <param name="auto_sparse_line_mode" type="optiongroup" appearance="combo" gui-text="降级强度：">
-  <option value="standard">标准（推荐）</option>
+  <option value="aggressive">激进（推荐）</option>
+  <option value="standard">标准</option>
   <option value="conservative">保守</option>
-  <option value="aggressive">激进</option>
   <option value="off">关闭</option>
 </param>
-<label xml:space="preserve">如果每个图层代表不同颜色或不同笔，勾选“按图层自动暂停”即可在每个非空图层开始前暂停；再勾选“图层暂停时进入换笔流程”，设备会抬笔、回到工作原点，等你换笔后继续。通常保持“绘图机路径优化档位=标准”“自动降级密排线稿=开启”即可。</label>
+<label xml:space="preserve">如果每个图层代表不同颜色或不同笔，勾选“按图层自动暂停”即可在每个非空图层开始前暂停；再勾选“图层暂停时进入换笔流程”，设备会抬笔、回到工作原点，等你换笔后继续。当前默认更偏向绘图机效率：路径优化档位和密排线降级强度都默认使用“激进”。</label>
 </page>
 
 <page name="coords" gui-text="坐标系">
@@ -164,8 +164,8 @@ gui-text="点动距离（mm）：">1.000</param>
 <param name="grbl_auto_fetch" type="bool" gui-hidden="true">true</param>
 <param name="grbl_command_timeout" type="float" gui-hidden="true">2.0</param>
 <param name="pen_change_prompt" type="bool" gui-hidden="true">true</param>
-<param name="grbl_pen_down_slow_feed" type="float" gui-hidden="true">600.0</param>
-<param name="grbl_pen_down_settle_ms" type="int" gui-hidden="true">180</param>
+<param name="grbl_pen_down_slow_feed" type="float" gui-hidden="true">0.0</param>
+<param name="grbl_pen_down_settle_ms" type="int" gui-hidden="true">0</param>
 <param name="grbl_set_dir_mask" type="int" gui-hidden="true">-1</param>
 <param name="grbl_set_homing_dir_mask" type="int" gui-hidden="true">-1</param>
 <param name="grbl_dir_invert_x" type="bool" gui-hidden="true">false</param>

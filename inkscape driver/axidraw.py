@@ -86,6 +86,16 @@ class AxiDraw(inkex.Effect):
         if params is None:
             params = import_module("axidrawinternal.axidraw_conf") # Default configuration file
         self.params = params
+        self._runtime_grbl_param_names = (
+            "grbl_pen_up_cmd",
+            "grbl_pen_down_cmd",
+            "grbl_disable_motors_cmd",
+            "grbl_pen_down_slow_feed",
+            "grbl_pen_down_settle_ms",
+        )
+        self._runtime_grbl_param_defaults = {
+            name: getattr(params, name, None) for name in self._runtime_grbl_param_names
+        }
         i18n.init_gettext(params=params)
 
         # axidraw.py is never actually called as a commandline tool, so why add options to
@@ -169,6 +179,9 @@ class AxiDraw(inkex.Effect):
 
         self.svg_transform = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
         self.digest = None
+        self.connected = False
+        for name, value in self._runtime_grbl_param_defaults.items():
+            setattr(self.params, name, value)
 
     def initialize_options(self):
         """ Use the flags and arguments defined in __init__ to populate self.options with
@@ -391,6 +404,8 @@ class AxiDraw(inkex.Effect):
     def effect(self):
         """Main entry point: check to see which mode/tab is selected, and act accordingly."""
         self.start_time = time.time()
+        self.set_defaults()
+        self.backup_original = None
 
         try:
             self.plot_status.secondary
@@ -1040,7 +1055,7 @@ class AxiDraw(inkex.Effect):
             logger.error(gettext.gettext('using File > Document Properties.'))
             return False
 
-        if not hasattr(self, 'backup_original'):
+        if self.backup_original is None:
             self.backup_original = copy.deepcopy(self.document)
 
         # Modifications to SVG -- including re-ordering and text substitution
@@ -1689,7 +1704,14 @@ class AxiDraw(inkex.Effect):
                     "Grbl motion chunk flush failed; plotting was stopped."))
                 return
             queued_segments = 0
-        serial_utils.grbl_flush_motion(self.plot_status, timeout_s=max(15.0, timeout_s), wait_idle=False)
+        if not serial_utils.grbl_flush_motion(
+                self.plot_status,
+                timeout_s=max(15.0, timeout_s),
+                wait_idle=False):
+            self.plot_status.stopped = 104
+            self.user_message_fun(gettext.gettext(
+                "Grbl motion final flush failed; plotting was stopped."))
+            return
         self.pen.pen_raise(self)
 
     def _parking_target_xy(self):

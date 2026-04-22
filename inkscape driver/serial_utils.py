@@ -189,6 +189,7 @@ def _connect_grbl(options, plot_status, message_fun, logger):
     selected_port = None
     dropdown_port = getattr(options, "port_choice", "auto")
     discovered_records = _grbl_port_records()
+    discovered_record_map = {item.device: item for item in discovered_records}
     discovered_ports = [item.device for item in discovered_records]
     bt_records = [item for item in discovered_records if _is_bluetooth_serial_record(item)]
     bt_records.sort(key=_bluetooth_record_rank)
@@ -274,9 +275,15 @@ def _connect_grbl(options, plot_status, message_fun, logger):
                 plot_status.grbl_axis_swap_xy = bool(getattr(options, "grbl_axis_swap_xy", False))
                 plot_status.grbl_axis_invert_x = bool(getattr(options, "grbl_axis_invert_x", False))
                 plot_status.grbl_axis_invert_y = bool(getattr(options, "grbl_axis_invert_y", False))
+                record = discovered_record_map.get(port_name)
+                plot_status.grbl_is_bluetooth = bool(record and _is_bluetooth_serial_record(record))
 
-                if getattr(options, "grbl_auto_fetch", True):
+                if getattr(options, "grbl_auto_fetch", True) and not plot_status.grbl_is_bluetooth:
                     plot_status.grbl_settings = read_grbl_settings(plot_status, timeout_s=handshake_timeout_s)
+                elif getattr(options, "grbl_auto_fetch", True) and plot_status.grbl_is_bluetooth:
+                    message_fun("检测到蓝牙串口，已跳过自动读取全部固件设置，避免连接卡顿。")
+                grbl_reset_stream_state(plot_status, clear_io=True)
+                _grbl_drain_incoming(plot_status)
 
                 logger.debug("Connected successfully to Grbl port: %s", port_name)
                 return True
@@ -313,22 +320,22 @@ def sanitize_grbl_option_defaults(options, message_fun=None):
             message_fun(msg)
 
     try:
-        slow_feed = float(getattr(options, "grbl_pen_down_slow_feed", 600.0))
+        slow_feed = float(getattr(options, "grbl_pen_down_slow_feed", 0.0))
     except Exception:
-        slow_feed = 600.0
-    if slow_feed < 60.0:
-        _emit("检测到异常低速落笔速度参数 {}，已回退到 600 mm/min。".format(
+        slow_feed = 0.0
+    if slow_feed < 0.0:
+        _emit("检测到异常低速落笔速度参数 {}，已回退到 0 mm/min。".format(
             getattr(options, "grbl_pen_down_slow_feed", slow_feed)))
-        options.grbl_pen_down_slow_feed = 600.0
+        options.grbl_pen_down_slow_feed = 0.0
 
     try:
-        settle_ms = int(float(getattr(options, "grbl_pen_down_settle_ms", 180)))
+        settle_ms = int(float(getattr(options, "grbl_pen_down_settle_ms", 0)))
     except Exception:
-        settle_ms = 180
-    if settle_ms < 50:
-        _emit("检测到异常落笔缓冲参数 {}，已回退到 180 ms。".format(
+        settle_ms = 0
+    if settle_ms < 0:
+        _emit("检测到异常落笔缓冲参数 {}，已回退到 0 ms。".format(
             getattr(options, "grbl_pen_down_settle_ms", settle_ms)))
-        options.grbl_pen_down_settle_ms = 180
+        options.grbl_pen_down_settle_ms = 0
 
     try:
         dir_mask = int(float(getattr(options, "grbl_set_dir_mask", -1)))
@@ -809,19 +816,27 @@ def grbl_initialize_motion(plot_status, timeout_s=2.0, zero_z=True, zero_xy=Fals
 
 def grbl_get_identity(plot_status, timeout_s=1.5):
     """Query '$I' and return informative identity/version lines."""
-    result = grbl_send_result(plot_status, "$I", expect_ok=True, timeout_s=timeout_s)
-    if not result["ok"]:
-        cached = getattr(plot_status, "fw_version", "")
-        return [cached] if cached else []
-    lines = []
-    for line in result["lines"]:
-        stripped = line.strip()
-        low = stripped.lower()
-        if not stripped or low == "ok":
+    if getattr(plot_status, "grbl_is_bluetooth", False):
+        timeout_s = max(timeout_s, 3.0)
+    cached = getattr(plot_status, "fw_version", "")
+    for _attempt in range(2):
+        grbl_reset_stream_state(plot_status, clear_io=True)
+        _grbl_drain_incoming(plot_status)
+        result = grbl_send_result(plot_status, "$I", expect_ok=True, timeout_s=timeout_s)
+        if not result["ok"]:
             continue
-        lines.append(stripped)
-    if lines:
-        return lines
+        lines = []
+        for line in result["lines"]:
+            stripped = line.strip()
+            low = stripped.lower()
+            if not stripped or low == "ok":
+                continue
+            if stripped.startswith("<") and stripped.endswith(">"):
+                continue
+            lines.append(stripped)
+        if lines:
+            return lines
+        time.sleep(0.12)
     cached = getattr(plot_status, "fw_version", "")
     return [cached] if cached else []
 

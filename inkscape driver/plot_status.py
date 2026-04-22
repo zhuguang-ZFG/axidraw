@@ -536,6 +536,7 @@ class PlotStatus:
         self.grbl_axis_swap_xy = False
         self.grbl_axis_invert_x = False
         self.grbl_axis_invert_y = False
+        self.grbl_is_bluetooth = False
         self.grbl_rx_buffer_size = 128
         self.grbl_pending_lengths = []
         self.grbl_last_status_timestamp = 0
@@ -568,6 +569,7 @@ class PlotStatus:
         self.grbl_axis_swap_xy = False
         self.grbl_axis_invert_x = False
         self.grbl_axis_invert_y = False
+        self.grbl_is_bluetooth = False
         self.grbl_rx_buffer_size = 128
         self.grbl_pending_lengths = []
         self.grbl_last_status_timestamp = 0

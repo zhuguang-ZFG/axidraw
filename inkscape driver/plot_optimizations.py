@@ -513,6 +513,8 @@ def auto_sparse_linework(
         return overlap / shorter
 
     angle_bin = max(0.5, float(angle_bin_deg))
+    min_candidate_count = max(1, int(min_candidate_count))
+    small_dense_fast_path_min = min(min_candidate_count, 48)
     for layer_item in digest.layers:
         candidates = []
         for index_i, path_item in enumerate(layer_item.paths):
@@ -523,8 +525,6 @@ def auto_sparse_linework(
             candidates.append(signature)
 
         stats["candidate_paths"] += len(candidates)
-        if len(candidates) < int(min_candidate_count):
-            continue
 
         grouped = {}
         for signature in candidates:
@@ -536,11 +536,21 @@ def auto_sparse_linework(
         dominant_items = []
         if grouped:
             dominant_items = max(grouped.values(), key=len)
+        dominant_ratio = 0.0
+        if dominant_items:
+            dominant_ratio = len(dominant_items) / max(1, len(candidates))
+
+        meets_full_threshold = len(candidates) >= min_candidate_count
+        meets_small_dense_threshold = (
+            len(candidates) >= small_dense_fast_path_min and
+            dominant_ratio >= 0.88
+        )
+        if not meets_full_threshold and not meets_small_dense_threshold:
+            continue
 
         # Fast path for generated hatch/scanline artwork:
         # one overwhelming line direction + extremely small median spacing.
-        if dominant_items and len(dominant_items) >= int(min_candidate_count):
-            dominant_ratio = len(dominant_items) / max(1, len(candidates))
+        if dominant_items and len(dominant_items) >= small_dense_fast_path_min:
             if dominant_ratio >= 0.80:
                 dominant_items = sorted(dominant_items, key=lambda item: item["normal"])
                 gaps = [

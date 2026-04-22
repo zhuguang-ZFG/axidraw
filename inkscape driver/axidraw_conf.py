@@ -98,12 +98,12 @@ grbl_auto_fetch = True  # Auto-read '$$' settings after connecting in Grbl mode
 grbl_command_timeout = 2.0  # Serial command timeout for Grbl mode, seconds
 
 # NOTE: These defaults are machine-specific; verify against your firmware profile.
-# Typical Z-stepper profile example: up 'G1 Z0 F3000', down 'G1 Z5 F3000'
-grbl_pen_up_cmd = 'G1 Z0 F3000'  # G-code for pen-up in Grbl mode
-grbl_pen_down_cmd = 'G1 Z5 F3000'  # Base G-code for pen-down in Grbl mode
-grbl_pen_down_slow_feed = 600.0 # If > 0, override pen-down G1/G0 feed with a gentler mm/min value
-grbl_pen_down_settle_ms = 180 # Extra pause after Grbl pen-down, to let pen settle on paper
-grbl_disable_motors_cmd = 'M18' # G-code for disabling steppers in Grbl mode
+# On the user's Paixi/PX writer hardware, direct Z moves test much faster than firmware-side M3/M5 pen control.
+grbl_pen_up_cmd = 'G1 Z0 F3000'  # Direct Z move is faster and more reliable on Paixi firmware over Bluetooth
+grbl_pen_down_cmd = 'G1 Z5 F3000'  # Direct Z move is faster and more reliable on Paixi firmware over Bluetooth
+grbl_pen_down_slow_feed = 0.0 # No extra slow feed override; keep the explicit G-code feed above.
+grbl_pen_down_settle_ms = 0 # No extra settle delay; wait for controller idle instead of adding fixed latency.
+grbl_disable_motors_cmd = '$MD' # Paixi firmware motor-disable command
 grbl_axis_swap_xy = True # Software-level XY swap for Grbl motion output
 grbl_axis_invert_x = True # Software-level invert X sign for Grbl motion output
 grbl_axis_invert_y = False # Software-level invert Y sign for Grbl motion output
@@ -111,9 +111,9 @@ grbl_min_segment = 0.0012 # Drop consecutive segments shorter than this length (
 grbl_collinear_tolerance = 0.0008 # Merge nearly-collinear middle vertices within this error (inches)
 grbl_near_dist = 0.012 # Prefer connecting/reordering paths with pen-up gaps shorter than this distance (inches)
 grbl_simple_path_tolerance = 0.02 # Remove trivially short flattened paths shorter than this distance (inches)
-grbl_path_optim_mode = 'standard' # off / conservative / standard / aggressive
+grbl_path_optim_mode = 'aggressive' # off / conservative / standard / aggressive
 auto_sparse_linework = True # If True, automatically thin dense parallel line-only artwork.
-auto_sparse_line_mode = 'standard' # off / conservative / standard / aggressive
+auto_sparse_line_mode = 'aggressive' # off / conservative / standard / aggressive
 auto_sparse_line_threshold = 0.0035 # Maximum median spacing (inches) considered "dense" for auto sparsify.
 auto_sparse_line_min_count = 2000 # Minimum 2-point path count before linework sparsify is considered.
 auto_sparse_line_min_run = 12 # Minimum dense run length before alternating lines are removed.
@@ -134,10 +134,10 @@ language = 'auto'       # Language override: auto / en / zh_CN
 auto_rotate = False     # Auto-select portrait vs landscape orientation
                             # Default: True
 
-reordering = 0          # Plot optimization option (0-4; 3 is deprecated)
-                            # 0: Least; Only connect adjoining paths (Default)
+reordering = 2          # Plot optimization option (0-4; 3 is deprecated)
+                            # 0: Least; Only connect adjoining paths
                             # 1: Basic; Also reorder paths for speed
-                            # 2: Full; Also allow path reversal
+                            # 2: Full; Also allow path reversal (Default for this plotter build)
                             # 4: None; Strictly preserve file order
 
 random_start = False    # Randomize start locations of closed paths. Default False

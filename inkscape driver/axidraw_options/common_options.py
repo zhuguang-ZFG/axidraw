@@ -150,15 +150,15 @@ def core_options(config):
                         help="G-code command for pen-down in Grbl mode.")
     options.add_argument("--grbl_pen_down_slow_feed",\
                         type=float, action="store", dest="grbl_pen_down_slow_feed",\
-                        default=config.get("grbl_pen_down_slow_feed", 600.0),\
+                        default=config.get("grbl_pen_down_slow_feed", 0.0),\
                         help="If > 0, use this slower mm/min feed for pen-down Z moves in Grbl mode.")
     options.add_argument("--grbl_pen_down_settle_ms",\
                         type=int, action="store", dest="grbl_pen_down_settle_ms",\
-                        default=config.get("grbl_pen_down_settle_ms", 180),\
+                        default=config.get("grbl_pen_down_settle_ms", 0),\
                         help="Extra settle delay after pen-down in Grbl mode, milliseconds.")
     options.add_argument("--grbl_disable_motors_cmd",\
                         type=str, action="store", dest="grbl_disable_motors_cmd",\
-                        default=config.get("grbl_disable_motors_cmd", "M18"),\
+                        default=config.get("grbl_disable_motors_cmd", "$MD"),\
                         help="G-code command for disabling steppers in Grbl mode.")
     options.add_argument("--grbl_axis_swap_xy",\
                         type=inkex.boolean_option, action="store", dest="grbl_axis_swap_xy",\
