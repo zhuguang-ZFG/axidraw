@@ -1090,12 +1090,12 @@ def _axis_map_out(plot_status, x_in, y_in):
     """Map logical XY into physical XY for outgoing Grbl motion."""
     x_out = x_in
     y_out = y_in
-    if getattr(plot_status, "grbl_axis_swap_xy", False):
-        x_out, y_out = y_out, x_out
     if getattr(plot_status, "grbl_axis_invert_x", False):
         x_out = -x_out
     if getattr(plot_status, "grbl_axis_invert_y", False):
         y_out = -y_out
+    if getattr(plot_status, "grbl_axis_swap_xy", False):
+        x_out, y_out = y_out, x_out
     return x_out, y_out
 
 
@@ -1103,12 +1103,12 @@ def _axis_map_in(plot_status, x_in, y_in):
     """Map physical XY back into logical XY from Grbl status."""
     x_out = x_in
     y_out = y_in
+    if getattr(plot_status, "grbl_axis_swap_xy", False):
+        x_out, y_out = y_out, x_out
     if getattr(plot_status, "grbl_axis_invert_x", False):
         x_out = -x_out
     if getattr(plot_status, "grbl_axis_invert_y", False):
         y_out = -y_out
-    if getattr(plot_status, "grbl_axis_swap_xy", False):
-        x_out, y_out = y_out, x_out
     return x_out, y_out
 
 

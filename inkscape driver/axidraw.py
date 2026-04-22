@@ -277,6 +277,42 @@ class AxiDraw(inkex.Effect):
         }
         return presets.get(mode, presets["standard"])
 
+    def _describe_grbl_axis_mapping(self):
+        """Return a readable summary of current logical-to-physical XY mapping."""
+        map_x = serial_utils._axis_map_out(self.plot_status, 1.0, 0.0)
+        map_y = serial_utils._axis_map_out(self.plot_status, 0.0, 1.0)
+
+        def _axis_label(mapped):
+            x_val, y_val = mapped
+            if abs(x_val) >= abs(y_val):
+                return "机器 X+" if x_val >= 0 else "机器 X-"
+            return "机器 Y+" if y_val >= 0 else "机器 Y-"
+
+        return (
+            f"逻辑 X+ -> {_axis_label(map_x)}，"
+            f"逻辑 Y+ -> {_axis_label(map_y)}"
+        )
+
+    def _describe_grbl_coordinate_model(self):
+        """Return a short description of the active working-origin coordinate model."""
+        if bool(getattr(self.plot_status, "grbl_xy_zeroed", False)):
+            return "当前坐标模型：以当前点作为工作原点 0,0；XY 对调/反转只改变逻辑轴投射到机器轴的方向，不会重写 G53 机器坐标。"
+        return "当前坐标模型：尚未把当前点设为工作原点；XY 对调/反转仅作用于工作坐标运动，G53 机器坐标不参与映射。"
+
+    def _grbl_auto_zero_on_connect_enabled(self):
+        """Return whether connect should automatically set current XY as work origin."""
+        return bool(getattr(
+            self.options,
+            "grbl_zero_xy_on_connect",
+            getattr(self.params, "grbl_zero_xy_on_connect", True)))
+
+    def _grbl_return_to_origin_after_plot_enabled(self):
+        """Return whether a successful plot should automatically return to work origin."""
+        return bool(getattr(
+            self.options,
+            "grbl_return_to_origin_after_plot",
+            getattr(self.params, "grbl_return_to_origin_after_plot", True)))
+
 
     def effect(self):
         """Main entry point: check to see which mode/tab is selected, and act accordingly."""
@@ -739,21 +775,31 @@ class AxiDraw(inkex.Effect):
             self.user_message_fun(f"Grbl $23（回零方向反转）: {homing_mask}")
             self.user_message_fun(
                 f"状态: {positions['state'] or 'n/a'} | "
-                f"机械坐标(in): {positions['mpos'] or 'n/a'} | "
-                f"工作坐标(in): {positions['wpos'] or 'n/a'}")
+                f"逻辑机械坐标(in): {positions['mpos'] or 'n/a'} | "
+                f"逻辑工作坐标(in): {positions['wpos'] or 'n/a'}")
+            self.user_message_fun(
+                f"物理机械坐标(in): {positions['mpos_phys'] or 'n/a'} | "
+                f"物理工作坐标(in): {positions['wpos_phys'] or 'n/a'}")
             self.user_message_fun(
                 "软件坐标映射: "
                 f"对调XY={bool(self.options.grbl_axis_swap_xy)}, "
                 f"反转X={bool(self.options.grbl_axis_invert_x)}, "
                 f"反转Y={bool(self.options.grbl_axis_invert_y)}")
+            self.user_message_fun(self._describe_grbl_axis_mapping())
+            self.user_message_fun(self._describe_grbl_coordinate_model())
             return
 
         if cmd == "status_refresh":
             positions = serial_utils.grbl_get_positions(self.plot_status, timeout_s=0.6)
             self.user_message_fun(
                 f"状态: {positions['state'] or 'n/a'} | "
-                f"机械坐标(in): {positions['mpos'] or 'n/a'} | "
-                f"工作坐标(in): {positions['wpos'] or 'n/a'}")
+                f"逻辑机械坐标(in): {positions['mpos'] or 'n/a'} | "
+                f"逻辑工作坐标(in): {positions['wpos'] or 'n/a'}")
+            self.user_message_fun(
+                f"物理机械坐标(in): {positions['mpos_phys'] or 'n/a'} | "
+                f"物理工作坐标(in): {positions['wpos_phys'] or 'n/a'}")
+            self.user_message_fun(self._describe_grbl_axis_mapping())
+            self.user_message_fun(self._describe_grbl_coordinate_model())
             return
 
         if cmd == "axis_apply":
@@ -792,6 +838,8 @@ class AxiDraw(inkex.Effect):
             if apply_ok:
                 self.user_message_fun(gettext.gettext("坐标轴设置已应用。"))
                 self.user_message_fun(f"已写入掩码: $3={dir_mask}, $23={home_mask}")
+                self.user_message_fun(self._describe_grbl_axis_mapping())
+                self.user_message_fun(self._describe_grbl_coordinate_model())
             else:
                 logger.error(gettext.gettext("一个或多个坐标轴设置写入失败。"))
             return
@@ -805,7 +853,7 @@ class AxiDraw(inkex.Effect):
             if saved_origin is not None:
                 park_x, park_y = saved_origin
                 self.user_message_fun(
-                    gettext.gettext("正在回到已保存原点（机器坐标）：X={0:.3f}, Y={1:.3f}").format(
+                    gettext.gettext("正在回到机器原点快照（G53/机器坐标）：X={0:.3f}, Y={1:.3f}").format(
                         park_x, park_y))
                 ok_move, _lines = serial_utils.grbl_move_machine_linear(
                     self.plot_status,
@@ -840,9 +888,12 @@ class AxiDraw(inkex.Effect):
             if not ok_zero:
                 logger.error(gettext.gettext("Failed to set the current point as origin."))
                 return
+            self.plot_status.grbl_xy_zeroed = True
             self.pen.phys.xpos = 0.0
             self.pen.phys.ypos = 0.0
             self.user_message_fun(gettext.gettext("已将当前点设置为原点。"))
+            self.user_message_fun(self._describe_grbl_axis_mapping())
+            self.user_message_fun(self._describe_grbl_coordinate_model())
             return
 
         if cmd == "home_cycle":
@@ -1073,7 +1124,19 @@ class AxiDraw(inkex.Effect):
         allow_reverse = self.options.reordering in [2, 3]
 
         if self.options.reordering in [1, 2, 3]:
-            plot_optimizations.reorder(self.digest, allow_reverse)
+            travel_before = None
+            if first_copy and self.options.controller == "grbl_esp32":
+                travel_before = plot_optimizations.estimate_pen_up_travel(self.digest)
+            plot_optimizations.reorder(self.digest, allow_reverse, start=[0.0, 0.0])
+            if travel_before is not None and not self.plot_status.secondary:
+                travel_after = plot_optimizations.estimate_pen_up_travel(self.digest)
+                travel_saved = max(0.0, travel_before - travel_after)
+                if travel_saved > 0.001:
+                    self.user_message_fun(gettext.gettext(
+                        "路径重排：预计抬笔空走从 {0:.1f} mm 降到 {1:.1f} mm，减少 {2:.1f} mm。").format(
+                            travel_before * 25.4,
+                            travel_after * 25.4,
+                            travel_saved * 25.4))
 
         if first_copy and self.options.digest: # Will return Plob, not full SVG; back it up here.
             self.backup_original = copy.deepcopy(self.digest.to_plob())
@@ -1118,7 +1181,10 @@ class AxiDraw(inkex.Effect):
 
             if self.plot_status.stopped == 0: # Return Home after normal plot
                 self.plot_status.resume.new.clean() # Clear flags indicating resume status
-                self.go_to_parking_position(wait_for_completion=True)
+                if self._grbl_return_to_origin_after_plot_enabled():
+                    self.go_to_parking_position(wait_for_completion=True)
+                else:
+                    self.user_message_fun(gettext.gettext("按当前设置，完成后不自动回工作原点。"))
 
         finally: # In case of an exception and loss of the serial port...
             pass
@@ -1522,6 +1588,9 @@ class AxiDraw(inkex.Effect):
     def _parking_target_xy(self):
         """Return logical XY target for parking/home motion."""
         parking_corner = str(getattr(self.params, "parking_corner", "origin") or "origin").strip().lower()
+        if serial_utils.is_grbl(self.plot_status) and bool(getattr(self.plot_status, "grbl_xy_zeroed", False)):
+            if parking_corner in ("left_upper", "origin"):
+                return 0.0, 0.0
         if serial_utils.is_grbl(self.plot_status) and parking_corner == "left_upper":
             physical_x = 0.0
             physical_y = max(float(getattr(self.params, "y_travel_default", self.bounds[1][1])), 0.0)
@@ -1531,6 +1600,9 @@ class AxiDraw(inkex.Effect):
     def _origin_target_xy(self):
         """Return logical XY target for configured default origin."""
         origin_corner = str(getattr(self.params, "origin_corner", "origin") or "origin").strip().lower()
+        if serial_utils.is_grbl(self.plot_status) and bool(getattr(self.plot_status, "grbl_xy_zeroed", False)):
+            if origin_corner in ("left_upper", "origin"):
+                return 0.0, 0.0
         if origin_corner != "left_upper":
             return self.params.start_pos_x, self.params.start_pos_y
 
@@ -1554,7 +1626,7 @@ class AxiDraw(inkex.Effect):
             timeout_s = max(5.0, float(getattr(self.options, "grbl_command_timeout", 2.0)) * 4.0)
             self.user_message_fun(
                 gettext.gettext(
-                    "正在回到原点：X={0:.3f}, Y={1:.3f}").format(park_x, park_y))
+                    "正在回到工作原点：X={0:.3f}, Y={1:.3f}").format(park_x, park_y))
             ok_mode, mode_lines = serial_utils.grbl_send(
                 self.plot_status,
                 "G90",
@@ -1564,7 +1636,7 @@ class AxiDraw(inkex.Effect):
                 saved_x, saved_y = self.plot_status.grbl_saved_origin_phys_in
                 self.user_message_fun(
                     gettext.gettext(
-                        "正在回到已保存原点（机器坐标）：X={0:.3f}, Y={1:.3f}").format(
+                        "正在回到机器原点快照（G53/机器坐标）：X={0:.3f}, Y={1:.3f}").format(
                             saved_x, saved_y))
                 ok, move_lines = serial_utils.grbl_move_machine_linear(
                     self.plot_status,
@@ -1587,7 +1659,7 @@ class AxiDraw(inkex.Effect):
                     serial_utils.grbl_wait_idle(self.plot_status, timeout_s=timeout_s)
             else:
                 self.user_message_fun(gettext.gettext(
-                    "回原点动作发送失败。G90={0} {1}; MOVE={2} {3}").format(
+                    "回工作原点动作发送失败。G90={0} {1}; MOVE={2} {3}").format(
                         ok_mode, mode_lines, ok, move_lines))
         else:
             self.go_to_position(park_x, park_y)
@@ -1674,7 +1746,7 @@ class AxiDraw(inkex.Effect):
             if serial_utils.is_grbl(self.plot_status) and not self.options.preview:
                 timeout_s = max(4.0, float(getattr(self.options, "grbl_command_timeout", 2.0)) * 3.0)
                 self._capture_grbl_origin_snapshot(timeout_s)
-                if bool(getattr(self.params, "grbl_zero_xy_on_connect", True)):
+                if self._grbl_auto_zero_on_connect_enabled():
                     ok_zero, _lines = serial_utils.grbl_send(
                         self.plot_status, "G92 X0 Y0", expect_ok=True, timeout_s=timeout_s)
                     if ok_zero:
@@ -1682,8 +1754,12 @@ class AxiDraw(inkex.Effect):
                         self.pen.phys.xpos = 0.0
                         self.pen.phys.ypos = 0.0
                         self.user_message_fun(gettext.gettext("已将当前位置设为原点。"))
+                        self.user_message_fun(self._describe_grbl_axis_mapping())
+                        self.user_message_fun(self._describe_grbl_coordinate_model())
                     else:
                         self.user_message_fun(gettext.gettext("设置当前位置为原点失败。"))
+                else:
+                    self.user_message_fun(gettext.gettext("按当前设置，连接后不自动设置工作原点。"))
         else:
             self.plot_status.stopped = 101 # Will become exit code 101; failed to connect
 

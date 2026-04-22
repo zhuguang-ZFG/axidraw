@@ -307,9 +307,10 @@ const_speed_factor_hr = 0.4  # In constant-speed mode, multiply pen-down speed b
 
 start_pos_x = 0  # Parking position, inches. Default: 0
 start_pos_y = 0  # Parking position, inches. Default: 0
-origin_corner = 'origin'  # Default logical origin: current-point origin after connect
-parking_corner = 'origin'  # Parking target: return to current-point origin
+origin_corner = 'left_upper'  # Default logical origin semantic: current point is treated as left-upper origin after connect
+parking_corner = 'left_upper'  # Parking semantic: return to the current working origin / left-upper origin
 grbl_zero_xy_on_connect = True  # If True, set current XY as logical origin after serial connect
+grbl_return_to_origin_after_plot = True  # If True, return to working origin after a successful plot
 
 # Acceleration & Deceleration rates:
 accel_rate = 40.0    # Standard acceleration rate, inches per second squared

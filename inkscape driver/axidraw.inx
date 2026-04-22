@@ -24,7 +24,8 @@
       <spacer />
       <param name="auto_pause_between_layers" type="bool" gui-text="图层间自动暂停">true</param>
       <param name="manual_pen_change" type="bool" gui-text="暂停时进入手动换笔流程">true</param>
-      <param name="pen_change_to_home" type="bool" gui-text="换笔时先回原点">true</param>
+      <param name="pen_change_to_home" type="bool" gui-text="换笔时先回工作原点">true</param>
+      <param name="grbl_return_to_origin_after_plot" type="bool" gui-text="完成后自动回工作原点">true</param>
       <spacer />
       <label>提示：份数设为 0 表示连续绘图。</label>
     </page>
@@ -113,6 +114,8 @@
       <label>说明：当前默认是先缩放适配机器行程，再对密排线稿做自动降级，最后保留越界裁切保护。</label>
       <spacer />
       <label appearance="header">坐标映射</label>
+      <label xml:space="preserve">当前推荐默认：先把当前位置设为左上角工作原点，再配合“反转 X 轴 + 对调 X/Y”。这里是“当前工作原点下的轴映射”，不是整页镜像；普通绘图与手动点动会使用同一套映射，机器坐标回原点（G53）不受这里影响。</label>
+      <param name="grbl_zero_xy_on_connect" type="bool" gui-text="连接后自动将当前位置设为工作原点">true</param>
       <param name="grbl_axis_invert_x" type="bool" gui-text="反转 X 轴">true</param>
       <param name="grbl_axis_invert_y" type="bool" gui-text="反转 Y 轴">false</param>
       <param name="grbl_axis_swap_xy" type="bool" gui-text="对调 X/Y">true</param>
@@ -127,9 +130,9 @@
       <label appearance="header">继续绘图与回零</label>
       <param name="resume_type" type="optiongroup" appearance="radio" gui-text="恢复方式：">
         <option value="plot">继续绘图</option>
-        <option value="home">仅回原点</option>
+        <option value="home">仅回工作原点</option>
       </param>
-      <label xml:space="preserve">继续绘图会读取 SVG 中保存的恢复信息。若只是想让机器回到工作原点，请选择“仅回原点”。</label>
+      <label xml:space="preserve">继续绘图会读取 SVG 中保存的恢复信息。若只是想让机器回到工作原点，请选择“仅回工作原点”。如果需要机械归位，请到“手动控制”页执行“机械归位（$H）”；若需要回机器原点快照，则由插件内部按 G53/机器坐标处理。</label>
     </page>
 
     <page name="sysinfo" gui-text="系统信息">

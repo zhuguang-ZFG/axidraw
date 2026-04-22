@@ -15,7 +15,8 @@
 <param name="preview" type="bool" gui-text="预览模式（仅模拟，不发送串口）：">false</param>
 <param name="auto_pause_between_layers" type="bool" gui-text="按图层自动暂停">true</param>
 <param name="manual_pen_change" type="bool" gui-text="图层暂停时进入换笔流程">true</param>
-<param name="pen_change_to_home" type="bool" gui-text="换笔时先回到原点">true</param>
+<param name="pen_change_to_home" type="bool" gui-text="换笔时先回到工作原点">true</param>
+<param name="grbl_return_to_origin_after_plot" type="bool" gui-text="完成后自动回工作原点">true</param>
 <param name="auto_sparse_linework" type="bool" gui-text="自动降级密排线稿">true</param>
 <param name="auto_sparse_line_mode" type="optiongroup" appearance="combo" gui-text="降级强度：">
   <option value="standard">标准（推荐）</option>
@@ -23,16 +24,18 @@
   <option value="aggressive">激进</option>
   <option value="off">关闭</option>
 </param>
-<label xml:space="preserve">如果每个图层代表不同颜色或不同笔，勾选“按图层自动暂停”即可在每个非空图层开始前暂停；再勾选“图层暂停时进入换笔流程”，设备会抬笔、回到原点，等你换笔后继续。</label>
+<label xml:space="preserve">如果每个图层代表不同颜色或不同笔，勾选“按图层自动暂停”即可在每个非空图层开始前暂停；再勾选“图层暂停时进入换笔流程”，设备会抬笔、回到工作原点，等你换笔后继续。</label>
 </page>
 
 <page name="coords" gui-text="坐标系">
 <label appearance="header">坐标系设置</label>
 <label xml:space="preserve">这几个选项用于匹配你的控制器坐标方向。当前推荐默认值已经按你的设备预设好：反转 X 轴、对调 X/Y、原点左上。</label>
 <spacer />
+<param name="grbl_zero_xy_on_connect" type="bool" gui-text="连接后自动将当前位置设为工作原点">true</param>
 <param name="grbl_axis_invert_x" type="bool" gui-text="反转 X 轴">true</param>
 <param name="grbl_axis_invert_y" type="bool" gui-text="反转 Y 轴">false</param>
 <param name="grbl_axis_swap_xy" type="bool" gui-text="对调 X 轴和 Y 轴">true</param>
+<label xml:space="preserve">默认推荐：先把当前位置设为左上角工作原点，再用“反转 X 轴 + 对调 X/Y”。这里是当前工作原点下的轴映射，不是整页镜像；手动点动、绘图和状态读取按同一套逻辑坐标解释，G53 机器坐标回原点不参与映射。</label>
 <param name="auto_rotate" type="bool" gui-text="自动旋转页面">false</param>
 <label xml:space="preserve">起点位置：左上（LeftUp，0,0）。当前快速面板固定按左上原点工作。</label>
 </page>
@@ -65,13 +68,13 @@ gui-text="点动距离（mm）：">1.000</param>
 
 <page name="res_plot" gui-text="继续绘图">
 <label appearance="header">继续绘图</label>
-<label xml:space="preserve">用于从 SVG 内保存的暂停位置继续输出。如果只是想把机器先移回原点，不要用这个页，请切到“回零”。</label>
+<label xml:space="preserve">用于从 SVG 内保存的暂停位置继续输出。如果只是想把机器先移回工作原点，不要用这个页，请切到“回零”。</label>
 <spacer />
 </page>
 
 <page name="res_home" gui-text="回零">
-<label appearance="header">仅回零 / 回工作原点</label>
-<label xml:space="preserve">用于把机器回到工作起点，不继续绘图。如果你的机器还没完成机械归位，请先去“手动控制”页执行“机械归位（$H）”。</label>
+<label appearance="header">仅回工作原点</label>
+<label xml:space="preserve">用于把机器回到当前工作原点，不继续绘图。如果你的机器还没完成机械归位，请先去“手动控制”页执行“机械归位（$H）”。插件内部若需要回机器原点快照，会按 G53/机器坐标单独处理，不受这里的轴映射影响。</label>
 <spacer />
 </page>
 

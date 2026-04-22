@@ -259,6 +259,35 @@ def _point_distance_sq(point_a, point_b):
     return delta_x * delta_x + delta_y * delta_y
 
 
+def _point_distance(point_a, point_b):
+    """Return distance between two [x, y] points."""
+    return math.sqrt(_point_distance_sq(point_a, point_b))
+
+
+def estimate_pen_up_travel(digest, start=(0.0, 0.0)):
+    """
+    Estimate total pen-up travel for a flattened digest, preserving layer order.
+
+    This is intended for reporting optimization impact; it does not include any
+    parking/home movement outside the document itself.
+    """
+    if digest is None:
+        return 0.0
+
+    current_point = [float(start[0]), float(start[1])]
+    total_travel = 0.0
+
+    for layer_item in digest.layers:
+        for path in layer_item.paths:
+            first_point = path.first_point()
+            last_point = path.last_point()
+            if first_point is None or last_point is None:
+                continue
+            total_travel += _point_distance(current_point, first_point)
+            current_point = [last_point[0], last_point[1]]
+    return total_travel
+
+
 def _point_line_distance(point_a, point_b, point_c):
     """
     Return perpendicular distance from point_b to the segment baseline a->c.
@@ -564,13 +593,13 @@ def auto_sparse_linework(
     return stats
 
 
-def reorder(digest, reverse):
+def reorder(digest, reverse, start=None):
     """
     Perform layer-aware path sorting, re-ordering paths within each layer for speed.
 
-    Assume that a plot is a plot of _all layers_ starting at position 0,0
-    for the purposes of reordering. This may not be the case in all situations,
-    but at least the _first_ layer will have reasonably short travel to the first point.
+    Preserve the original layer order, but carry the current endpoint forward from
+    one layer to the next so that each new layer starts from the actual previous
+    plot position rather than assuming a fresh 0,0 restart.
 
     While there are still paths left to sort: # Outer loop
         For each remaining path: # Inner loop
@@ -579,12 +608,27 @@ def reorder(digest, reverse):
 
     Inputs: digest: a path_objects.DocDigest object
             reverse (boolean) - True if paths can be reversed
+            start: Optional [x, y] point for the first path search
     """
+
+    if digest is None:
+        return {"layers_reordered": 0, "final_point": [0.0, 0.0]}
+
+    if start is None:
+        vertex = [0.0, 0.0]
+    else:
+        vertex = [float(start[0]), float(start[1])]
+
+    layers_reordered = 0
 
     for layer_item in digest.layers:
         available_count = len(layer_item.paths)
 
         if available_count <= 1:
+            if available_count == 1:
+                last_point = layer_item.paths[0].last_point()
+                if last_point is not None:
+                    vertex = [last_point[0], last_point[1]]
             continue # No sortable paths; move on to next layer
 
         tour_path = []
@@ -598,8 +642,6 @@ def reorder(digest, reverse):
         else:
             grid_bins = 4 + math.floor(math.sqrt(available_count / 50))
         grid_index = spatial_grid.Index(endpoints, grid_bins, reverse)
-
-        vertex = [0, 0] # Starting position of plot: (0,0)
 
         while True:
             nearest_index = grid_index.nearest(vertex)
@@ -627,3 +669,9 @@ def reorder(digest, reverse):
                 next_path.reverse()
             output_path_temp.append(next_path)
         layer_item.paths = copy.copy(output_path_temp)
+        final_point = layer_item.paths[-1].last_point()
+        if final_point is not None:
+            vertex = [final_point[0], final_point[1]]
+        layers_reordered += 1
+
+    return {"layers_reordered": layers_reordered, "final_point": vertex}
