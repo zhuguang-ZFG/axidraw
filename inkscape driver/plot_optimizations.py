@@ -252,6 +252,260 @@ def supersample(digest, tolerance):
             plot_utils.supersample(vertex_list, tolerance)
 
 
+def _point_distance_sq(point_a, point_b):
+    """Return squared distance between two [x, y] points."""
+    delta_x = point_b[0] - point_a[0]
+    delta_y = point_b[1] - point_a[1]
+    return delta_x * delta_x + delta_y * delta_y
+
+
+def _point_line_distance(point_a, point_b, point_c):
+    """
+    Return perpendicular distance from point_b to the segment baseline a->c.
+    If a and c are identical, return the point distance to a.
+    """
+    delta_x = point_c[0] - point_a[0]
+    delta_y = point_c[1] - point_a[1]
+    base_length = math.hypot(delta_x, delta_y)
+    if base_length <= 1e-12:
+        return math.hypot(point_b[0] - point_a[0], point_b[1] - point_a[1])
+    area_twice = abs(
+        (point_b[0] - point_a[0]) * delta_y -
+        (point_b[1] - point_a[1]) * delta_x)
+    return area_twice / base_length
+
+
+def _is_between(point_a, point_b, point_c):
+    """Return True if point_b lies along the direction from a to c."""
+    ab_x = point_b[0] - point_a[0]
+    ab_y = point_b[1] - point_a[1]
+    bc_x = point_c[0] - point_b[0]
+    bc_y = point_c[1] - point_b[1]
+    return (ab_x * bc_x + ab_y * bc_y) >= 0
+
+
+def optimize_vertex_list(vertex_list, min_segment, collinear_tolerance):
+    """
+    Reduce redundant vertices for streaming controllers.
+
+    Steps:
+    1. Remove duplicate or extremely short consecutive segments.
+    2. Remove nearly-collinear middle points when their deviation is below tolerance.
+
+    Returns a tuple: (optimized_vertices, removed_count)
+    """
+    list_length = len(vertex_list)
+    if list_length < 3:
+        return copy.deepcopy(vertex_list), 0
+
+    min_segment_sq = max(min_segment, 0.0) ** 2
+    original_closed = _point_distance_sq(vertex_list[0], vertex_list[-1]) <= min_segment_sq
+    working_vertices = copy.deepcopy(vertex_list[:-1] if original_closed else vertex_list)
+
+    deduped = [working_vertices[0]]
+    for point in working_vertices[1:]:
+        if _point_distance_sq(deduped[-1], point) <= min_segment_sq:
+            continue
+        deduped.append(point)
+
+    if len(deduped) < 2:
+        if original_closed:
+            deduped = [copy.deepcopy(vertex_list[0]), copy.deepcopy(vertex_list[0])]
+        else:
+            removed_count = max(0, list_length - 1)
+            return copy.deepcopy(vertex_list[:1]), removed_count
+
+    simplified = [deduped[0]]
+    for point_index in range(1, len(deduped) - 1):
+        point = deduped[point_index]
+        prev_point = simplified[-1]
+        next_point = deduped[point_index + 1]
+        if _point_distance_sq(prev_point, next_point) <= min_segment_sq:
+            continue
+        if _is_between(prev_point, point, next_point):
+            deviation = _point_line_distance(prev_point, point, next_point)
+            if deviation <= collinear_tolerance:
+                continue
+        simplified.append(point)
+    simplified.append(deduped[-1])
+
+    if original_closed:
+        if _point_distance_sq(simplified[0], simplified[-1]) > min_segment_sq:
+            simplified.append(copy.deepcopy(simplified[0]))
+        elif len(simplified) == 1:
+            simplified.append(copy.deepcopy(simplified[0]))
+
+    removed_count = max(0, list_length - len(simplified))
+    return simplified, removed_count
+
+
+def optimize_digest_for_grbl(digest, min_segment, collinear_tolerance):
+    """
+    Apply a Grbl/plotter-focused simplification pass to every flattened path.
+
+    Returns a dict with counts for logging/reporting.
+    """
+    stats = {"paths_touched": 0, "vertices_removed": 0}
+    if digest is None:
+        return stats
+
+    for layer_item in digest.layers:
+        for path in layer_item.paths:
+            if not path.subpaths:
+                continue
+            for subpath_index, vertex_list in enumerate(path.subpaths):
+                if len(vertex_list) < 3:
+                    continue
+                optimized, removed = optimize_vertex_list(
+                    vertex_list, min_segment, collinear_tolerance)
+                if removed > 0:
+                    path.subpaths[subpath_index] = optimized
+                    stats["paths_touched"] += 1
+                    stats["vertices_removed"] += removed
+    return stats
+
+
+def auto_sparse_linework(
+        digest,
+        spacing_threshold,
+        angle_bin_deg=4.0,
+        min_dense_run=12,
+        min_candidate_count=2000,
+        overlap_tolerance=0.6):
+    """
+    Reduce density for line-only artwork that appears to be generated hatch/scanline output.
+
+    This only targets flattened 2-point paths. It groups near-parallel lines and removes
+    alternating lines inside dense, overlapping runs.
+    """
+    stats = {"paths_removed": 0, "layers_touched": 0, "candidate_paths": 0}
+    if digest is None:
+        return stats
+
+    def _line_signature(path_item):
+        if not path_item.subpaths or len(path_item.subpaths) != 1:
+            return None
+        vertex_list = path_item.subpaths[0]
+        if len(vertex_list) != 2:
+            return None
+        point_a = vertex_list[0]
+        point_b = vertex_list[1]
+        delta_x = point_b[0] - point_a[0]
+        delta_y = point_b[1] - point_a[1]
+        length = math.hypot(delta_x, delta_y)
+        if length <= 1e-9:
+            return None
+        angle = math.atan2(delta_y, delta_x)
+        if angle < 0:
+            angle += math.pi
+        if angle >= math.pi:
+            angle -= math.pi
+        unit_x = delta_x / length
+        unit_y = delta_y / length
+        normal_x = -unit_y
+        normal_y = unit_x
+        tangent_a = point_a[0] * unit_x + point_a[1] * unit_y
+        tangent_b = point_b[0] * unit_x + point_b[1] * unit_y
+        midpoint_x = (point_a[0] + point_b[0]) * 0.5
+        midpoint_y = (point_a[1] + point_b[1]) * 0.5
+        return {
+            "angle": angle,
+            "length": length,
+            "normal": midpoint_x * normal_x + midpoint_y * normal_y,
+            "tan_min": min(tangent_a, tangent_b),
+            "tan_max": max(tangent_a, tangent_b),
+        }
+
+    def _tangent_overlap_ratio(sig_a, sig_b):
+        overlap = min(sig_a["tan_max"], sig_b["tan_max"]) - max(sig_a["tan_min"], sig_b["tan_min"])
+        if overlap <= 0:
+            return 0.0
+        shorter = min(sig_a["tan_max"] - sig_a["tan_min"], sig_b["tan_max"] - sig_b["tan_min"])
+        if shorter <= 1e-9:
+            return 0.0
+        return overlap / shorter
+
+    angle_bin = max(0.5, float(angle_bin_deg))
+    for layer_item in digest.layers:
+        candidates = []
+        for index_i, path_item in enumerate(layer_item.paths):
+            signature = _line_signature(path_item)
+            if signature is None:
+                continue
+            signature["index"] = index_i
+            candidates.append(signature)
+
+        stats["candidate_paths"] += len(candidates)
+        if len(candidates) < int(min_candidate_count):
+            continue
+
+        grouped = {}
+        for signature in candidates:
+            bucket = int(round(math.degrees(signature["angle"]) / angle_bin))
+            grouped.setdefault(bucket, []).append(signature)
+
+        remove_indices = set()
+
+        dominant_items = []
+        if grouped:
+            dominant_items = max(grouped.values(), key=len)
+
+        # Fast path for generated hatch/scanline artwork:
+        # one overwhelming line direction + extremely small median spacing.
+        if dominant_items and len(dominant_items) >= int(min_candidate_count):
+            dominant_ratio = len(dominant_items) / max(1, len(candidates))
+            if dominant_ratio >= 0.80:
+                dominant_items = sorted(dominant_items, key=lambda item: item["normal"])
+                gaps = [
+                    abs(dominant_items[index_i]["normal"] - dominant_items[index_i - 1]["normal"])
+                    for index_i in range(1, len(dominant_items))
+                ]
+                if gaps:
+                    median_gap = sorted(gaps)[len(gaps) // 2]
+                    if median_gap <= float(spacing_threshold):
+                        for item_index, item in enumerate(dominant_items):
+                            if item_index % 2 == 1:
+                                remove_indices.add(item["index"])
+
+        for bucket_items in grouped.values():
+            if len(bucket_items) < int(min_dense_run):
+                continue
+            bucket_items.sort(key=lambda item: item["normal"])
+            run = [bucket_items[0]]
+            for signature in bucket_items[1:]:
+                prev = run[-1]
+                normal_gap = abs(signature["normal"] - prev["normal"])
+                overlap_ratio = _tangent_overlap_ratio(prev, signature)
+                length_ratio = min(prev["length"], signature["length"]) / max(prev["length"], signature["length"])
+                if (
+                        normal_gap <= float(spacing_threshold) and
+                        overlap_ratio >= float(overlap_tolerance) and
+                        length_ratio >= 0.75):
+                    run.append(signature)
+                    continue
+
+                if len(run) >= int(min_dense_run):
+                    for run_index, item in enumerate(run):
+                        if run_index % 2 == 1:
+                            remove_indices.add(item["index"])
+                run = [signature]
+
+            if len(run) >= int(min_dense_run):
+                for run_index, item in enumerate(run):
+                    if run_index % 2 == 1:
+                        remove_indices.add(item["index"])
+
+        if remove_indices:
+            layer_item.paths = [
+                path_item for index_i, path_item in enumerate(layer_item.paths)
+                if index_i not in remove_indices
+            ]
+            stats["paths_removed"] += len(remove_indices)
+            stats["layers_touched"] += 1
+
+    return stats
+
+
 def reorder(digest, reverse):
     """
     Perform layer-aware path sorting, re-ordering paths within each layer for speed.

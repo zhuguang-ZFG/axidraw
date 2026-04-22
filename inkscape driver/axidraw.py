@@ -35,6 +35,12 @@ import logging
 import math
 import time
 import socket  # for exception handling only
+try:
+    import tkinter
+    from tkinter import messagebox
+except Exception:  # pragma: no cover
+    tkinter = None
+    messagebox = None
 
 from lxml import etree
 
@@ -51,6 +57,7 @@ from axidrawinternal import serial_utils
 from axidrawinternal import motion
 from axidrawinternal import dripfeed
 from axidrawinternal import preview
+from axidrawinternal import i18n
 
 from axidrawinternal.plot_utils_import import from_dependency_import # plotink
 simplepath = from_dependency_import('ink_extensions.simplepath')
@@ -78,6 +85,7 @@ class AxiDraw(inkex.Effect):
         if params is None:
             params = import_module("axidrawinternal.axidraw_conf") # Default configuration file
         self.params = params
+        i18n.init_gettext(params=params)
 
         # axidraw.py is never actually called as a commandline tool, so why add options to
         # self.arg_parser here? Because it helps populate the self.options object
@@ -216,6 +224,59 @@ class AxiDraw(inkex.Effect):
         self.options.speed_penup = plot_utils.constrainLimits(self.options.speed_penup, 1, 200)
         self.options.accel = plot_utils.constrainLimits(self.options.accel, 1, 110)
 
+    def _apply_grbl_runtime_commands(self):
+        """Allow UI/CLI Grbl command strings to override config defaults."""
+        for opt_name, param_name in (
+            ("grbl_pen_up_cmd", "grbl_pen_up_cmd"),
+            ("grbl_pen_down_cmd", "grbl_pen_down_cmd"),
+            ("grbl_disable_motors_cmd", "grbl_disable_motors_cmd"),
+            ("grbl_pen_down_slow_feed", "grbl_pen_down_slow_feed"),
+            ("grbl_pen_down_settle_ms", "grbl_pen_down_settle_ms"),
+        ):
+            opt_value = getattr(self.options, opt_name, None)
+            if opt_value is None:
+                continue
+            if isinstance(opt_value, str):
+                cmd = str(opt_value).strip()
+            else:
+                cmd = opt_value
+            if cmd != "":
+                setattr(self.params, param_name, cmd)
+
+    def _report_grbl_command_profile(self):
+        """Print active Grbl pen/motor commands once per run."""
+        if getattr(self.plot_status, "secondary", False):
+            return
+        self.user_message_fun(
+            gettext.gettext(
+                "Grbl command profile: pen-up='{0}', pen-down='{1}', disable='{2}'.").format(
+                    self.params.grbl_pen_up_cmd,
+                    self.params.grbl_pen_down_cmd,
+                    self.params.grbl_disable_motors_cmd))
+        slow_feed = float(getattr(self.params, "grbl_pen_down_slow_feed", 0.0) or 0.0)
+        settle_ms = int(getattr(self.params, "grbl_pen_down_settle_ms", 0) or 0)
+        if slow_feed > 0 or settle_ms > 0:
+            self.user_message_fun(
+                gettext.gettext(
+                    "低速落笔保护已启用：落笔速度 {0:.0f} mm/min，触纸缓冲 {1} ms。").format(
+                        slow_feed,
+                        settle_ms))
+
+    def _auto_sparse_settings(self):
+        """Return effective dense-line thinning settings from UI/options."""
+        enabled = bool(getattr(self.options, "auto_sparse_linework",
+                               getattr(self.params, "auto_sparse_linework", True)))
+        mode = str(getattr(self.options, "auto_sparse_line_mode",
+                           getattr(self.params, "auto_sparse_line_mode", "standard")) or "standard")
+        mode = mode.strip().lower()
+        presets = {
+            "off": {"enabled": False, "threshold": 0.0035, "min_run": 999999},
+            "conservative": {"enabled": enabled, "threshold": 0.0024, "min_run": 18},
+            "standard": {"enabled": enabled, "threshold": 0.0035, "min_run": 12},
+            "aggressive": {"enabled": enabled, "threshold": 0.0048, "min_run": 8},
+        }
+        return presets.get(mode, presets["standard"])
+
 
     def effect(self):
         """Main entry point: check to see which mode/tab is selected, and act accordingly."""
@@ -252,6 +313,7 @@ class AxiDraw(inkex.Effect):
         self.options.manual_cmd = self.options.manual_cmd.strip("\"")
         self.options.resume_type = self.options.resume_type.strip("\"")
         self.options.page_delay = max(self.options.page_delay, 0)
+        self._apply_grbl_runtime_commands()
 
         try:
             self.called_externally
@@ -282,14 +344,9 @@ class AxiDraw(inkex.Effect):
                 self.user_message_fun(self.plot_status.resume.manage_offset(self))
                 self.res_dist = max(self.plot_status.resume.new.pause_dist*25.4, 0) # Python API
                 return
-            if self.options.manual_cmd == "list_names": # Run before regular serial connection!
-                self.name_list = ebb_serial.list_named_ebbs() # Variable available for python API
-                if not self.name_list:
-                    self.user_message_fun(gettext.gettext("No named AxiDraw units located.\n"))
-                else:
-                    self.user_message_fun(gettext.gettext("List of attached AxiDraw units:"))
-                    for detected_ebb in self.name_list:
-                        self.user_message_fun(detected_ebb)
+            if self.options.manual_cmd == "list_names":
+                self.user_message_fun(gettext.gettext(
+                    "当前绘图机版插件不支持设备昵称列表。"))
                 return
 
         if self.options.mode == "resume":
@@ -307,7 +364,16 @@ class AxiDraw(inkex.Effect):
             self.options.preview = True # Disable serial communication; restrict certain functions
 
         if not self.options.preview:
+            i18n.init_gettext(options=self.options, params=self.params)
             self.serial_connect()
+            if serial_utils.is_grbl(self.plot_status):
+                conflict_messages = serial_utils.grbl_settings_conflicts(
+                    self.options, self.params, self.plot_status)
+                serial_utils.apply_grbl_settings_to_params(self.plot_status, self.params)
+                self.update_options()
+                self._report_grbl_command_profile()
+                for conflict_message in conflict_messages:
+                    self.user_message_fun(conflict_message)
             self.plot_status.resume.clear_button(self) # Query button to clear its state
 
         if self.options.mode == "sysinfo":
@@ -340,6 +406,18 @@ class AxiDraw(inkex.Effect):
             if self.plot_status.resume.old.pause_dist >= 0:
                 self.pen.phys.xpos = self.plot_status.resume.old.last_x
                 self.pen.phys.ypos = self.plot_status.resume.old.last_y
+                if serial_utils.is_grbl(self.plot_status):
+                    grbl_pos = serial_utils.grbl_get_position(
+                        self.plot_status, timeout_s=max(0.5, float(self.options.grbl_command_timeout)))
+                    if grbl_pos is not None:
+                        delta_x = abs(grbl_pos[0] - self.pen.phys.xpos)
+                        delta_y = abs(grbl_pos[1] - self.pen.phys.ypos)
+                        if delta_x > 0.05 or delta_y > 0.05:
+                            logger.error(gettext.gettext(
+                                "Resume aborted: machine position differs from stored resume position."))
+                            logger.error(gettext.gettext(
+                                "Home the machine or realign coordinates before resuming."))
+                            return
                 self.plot_status.resume.new.rand_seed = self.plot_status.resume.old.rand_seed
                 self.plot_status.resume.new.layer = self.plot_status.resume.old.layer
             else:
@@ -435,7 +513,10 @@ class AxiDraw(inkex.Effect):
                 self.plot_status.resume.new.plob_version = str(path_objects.PLOB_VERSION)
             self.plot_status.resume.write_to_svg(self.svg)
         if self.plot_status.port is not None:
-            ebb_motion.doTimedPause(self.plot_status.port, 10, False) # Final timed motion command
+            if serial_utils.is_grbl(self.plot_status):
+                time.sleep(0.01)
+            else:
+                ebb_motion.doTimedPause(self.plot_status.port, 10, False) # Final timed motion command
             if self.options.port is None:  # Do not close serial port if it was opened externally.
                 self.disconnect()
         self.warnings.report(self.called_externally, self.user_message_fun) # print warnings
@@ -456,7 +537,18 @@ class AxiDraw(inkex.Effect):
 
         if self.options.mode == "align":
             self.pen.pen_raise(self)
-            ebb_motion.sendDisableMotors(self.plot_status.port, False)
+            if serial_utils.is_grbl(self.plot_status):
+                result = serial_utils.grbl_send_result(
+                    self.plot_status,
+                    self.params.grbl_disable_motors_cmd,
+                    expect_ok=True,
+                    timeout_s=max(1.0, float(self.options.grbl_command_timeout)))
+                if not result["ok"]:
+                    logger.error(
+                        gettext.gettext("Failed to disable motors in Grbl mode ({0}).").format(
+                            result["kind"]))
+            else:
+                ebb_motion.sendDisableMotors(self.plot_status.port, False)
         elif self.options.mode == "cycle":
             self.pen.cycle(self)
         # Note that "toggle" mode is handled within self.pen.servo_init(self)
@@ -471,7 +563,39 @@ class AxiDraw(inkex.Effect):
             return
 
         if self.options.manual_cmd == "fw_version":
-            self.user_message_fun(self.plot_status.fw_version)
+            info_lines = serial_utils.grbl_get_identity(
+                self.plot_status,
+                timeout_s=max(1.0, float(self.options.grbl_command_timeout)))
+            self.user_message_fun(f"端口: {getattr(self.plot_status, 'port_name', 'n/a')}")
+            if info_lines:
+                self.plot_status.fw_version = info_lines[0]
+                for line in info_lines:
+                    self.user_message_fun(line)
+            else:
+                self.user_message_fun(self.plot_status.fw_version)
+            return
+
+        self.manual_command_grbl()
+        return
+
+        if self.options.manual_cmd == "fw_version":
+            if serial_utils.is_grbl(self.plot_status):
+                info_lines = serial_utils.grbl_get_identity(
+                    self.plot_status,
+                    timeout_s=max(1.0, float(self.options.grbl_command_timeout)))
+                if info_lines:
+                    self.plot_status.fw_version = info_lines[0]
+                    self.user_message_fun(f"端口: {getattr(self.plot_status, 'port_name', 'n/a')}")
+                    for line in info_lines:
+                        self.user_message_fun(line)
+                else:
+                    self.user_message_fun(self.plot_status.fw_version)
+            else:
+                self.user_message_fun(self.plot_status.fw_version)
+            return
+
+        if serial_utils.is_grbl(self.plot_status):
+            self.manual_command_grbl()
             return
 
         if self.options.manual_cmd == "bootload":
@@ -557,7 +681,195 @@ class AxiDraw(inkex.Effect):
                 return
             f_x = self.pen.phys.xpos + n_delta_x # Note: Walks are relative, not absolute!
             f_y = self.pen.phys.ypos + n_delta_y # New position is not saved; use with care.
-            self.go_to_position(f_x, f_y, ignore_limits=True)
+            self.go_to_position(f_x, f_y)
+
+    def manual_command_grbl(self):
+        """Manual commands for Grbl backend."""
+        cmd = self.options.manual_cmd
+        timeout_s = max(1.0, float(self.options.grbl_command_timeout))
+        state_blocked = {"Run", "Hold", "Jog", "Home", "Check", "Door"}
+
+        def _state_guard():
+            status_line = serial_utils.grbl_query_status(self.plot_status, timeout_s=0.3)
+            state = serial_utils.grbl_status_state(status_line)
+            if state in state_blocked:
+                logger.error(
+                    gettext.gettext(
+                        "Controller busy state: {0}. Please resume/idle before this command.").format(state))
+                return False
+            return True
+
+        if cmd == "ports_scan":
+            ports = serial_utils.list_grbl_port_info()
+            if ports:
+                self.user_message_fun("Detected Grbl serial ports:")
+                for port_info in ports:
+                    desc = port_info["description"] or "n/a"
+                    self.user_message_fun(
+                        f"  {port_info['device']} | {desc}")
+            else:
+                self.user_message_fun("No serial ports detected.")
+            return
+
+        if cmd in ("raise_pen", "lower_pen"):
+            if not _state_guard():
+                return
+            self.pen.servo_init(self)
+            if cmd == "raise_pen":
+                self.pen.pen_raise(self)
+            else:
+                self.pen.pen_lower(self)
+            return
+
+        if cmd == "enable_xy":
+            ok, _lines = serial_utils.grbl_send(self.plot_status, "$X", expect_ok=True, timeout_s=timeout_s)
+            if not ok:
+                logger.error(gettext.gettext("Failed to unlock Grbl with $X."))
+            return
+
+        if cmd == "disable_xy":
+            ok, _lines = serial_utils.grbl_send(
+                self.plot_status,
+                self.params.grbl_disable_motors_cmd,
+                expect_ok=True,
+                timeout_s=timeout_s)
+            if not ok:
+                logger.error(gettext.gettext("Failed to disable motors in Grbl mode."))
+            return
+
+        if cmd == "axis_read":
+            self.plot_status.grbl_settings = serial_utils.read_grbl_settings(
+                self.plot_status, timeout_s=timeout_s)
+            dir_mask = self.plot_status.grbl_settings.get(3, "n/a")
+            homing_mask = self.plot_status.grbl_settings.get(23, "n/a")
+            positions = serial_utils.grbl_get_positions(self.plot_status, timeout_s=0.6)
+            self.user_message_fun(f"Grbl $3（方向反转）: {dir_mask}")
+            self.user_message_fun(f"Grbl $23（回零方向反转）: {homing_mask}")
+            self.user_message_fun(
+                f"状态: {positions['state'] or 'n/a'} | "
+                f"机械坐标(in): {positions['mpos'] or 'n/a'} | "
+                f"工作坐标(in): {positions['wpos'] or 'n/a'}")
+            self.user_message_fun(
+                "软件坐标映射: "
+                f"对调XY={bool(self.options.grbl_axis_swap_xy)}, "
+                f"反转X={bool(self.options.grbl_axis_invert_x)}, "
+                f"反转Y={bool(self.options.grbl_axis_invert_y)}")
+            return
+
+        if cmd == "status_refresh":
+            positions = serial_utils.grbl_get_positions(self.plot_status, timeout_s=0.6)
+            self.user_message_fun(
+                f"状态: {positions['state'] or 'n/a'} | "
+                f"机械坐标(in): {positions['mpos'] or 'n/a'} | "
+                f"工作坐标(in): {positions['wpos'] or 'n/a'}")
+            return
+
+        if cmd == "axis_apply":
+            if not _state_guard():
+                return
+            apply_ok = True
+            dir_mask = int(self.options.grbl_set_dir_mask)
+            home_mask = int(self.options.grbl_set_homing_dir_mask)
+            ui_dir_bits = (
+                (1 if bool(self.options.grbl_dir_invert_x) else 0) |
+                (2 if bool(self.options.grbl_dir_invert_y) else 0) |
+                (4 if bool(self.options.grbl_dir_invert_z) else 0)
+            )
+            ui_home_bits = (
+                (1 if bool(self.options.grbl_home_invert_x) else 0) |
+                (2 if bool(self.options.grbl_home_invert_y) else 0) |
+                (4 if bool(self.options.grbl_home_invert_z) else 0)
+            )
+            # Checkbox-derived masks take priority when any checkbox is selected.
+            if ui_dir_bits > 0:
+                dir_mask = ui_dir_bits
+            if ui_home_bits > 0:
+                home_mask = ui_home_bits
+
+            if dir_mask >= 0:
+                apply_ok &= serial_utils.grbl_write_setting(
+                    self.plot_status, 3, dir_mask, timeout_s)
+            if home_mask >= 0:
+                apply_ok &= serial_utils.grbl_write_setting(
+                    self.plot_status, 23, home_mask, timeout_s)
+            self.plot_status.grbl_axis_swap_xy = bool(self.options.grbl_axis_swap_xy)
+            self.plot_status.grbl_axis_invert_x = bool(self.options.grbl_axis_invert_x)
+            self.plot_status.grbl_axis_invert_y = bool(self.options.grbl_axis_invert_y)
+            self.plot_status.grbl_settings = serial_utils.read_grbl_settings(
+                self.plot_status, timeout_s=timeout_s)
+            if apply_ok:
+                self.user_message_fun(gettext.gettext("坐标轴设置已应用。"))
+                self.user_message_fun(f"已写入掩码: $3={dir_mask}, $23={home_mask}")
+            else:
+                logger.error(gettext.gettext("一个或多个坐标轴设置写入失败。"))
+            return
+
+        if cmd == "walk_home":
+            if not _state_guard():
+                return
+            ok_mode, _lines = serial_utils.grbl_send(
+                self.plot_status, "G90", expect_ok=True, timeout_s=timeout_s)
+            ok_move, _lines = serial_utils.grbl_send(
+                self.plot_status, "G0 X0 Y0", expect_ok=True, timeout_s=timeout_s)
+            if not (ok_mode and ok_move):
+                logger.error(gettext.gettext("Failed to execute walk_home in Grbl mode."))
+                return
+            self.pen.phys.xpos = 0
+            self.pen.phys.ypos = 0
+            return
+
+        if cmd == "home_cycle":
+            if not _state_guard():
+                return
+            ok, _lines = serial_utils.grbl_send(
+                self.plot_status, "$H", expect_ok=True, timeout_s=max(timeout_s, 3.0))
+            if not ok:
+                logger.error(gettext.gettext("Failed to execute Grbl homing cycle ($H)."))
+            return
+
+        if cmd in ("walk_x", "walk_y", "walk_mmx", "walk_mmy",
+                    "walk_mmx_pos", "walk_mmx_neg", "walk_mmy_pos", "walk_mmy_neg"):
+            if not _state_guard():
+                return
+            dist_in = self.options.dist
+            if cmd in ("walk_mmx", "walk_mmy", "walk_mmx_pos", "walk_mmx_neg", "walk_mmy_pos", "walk_mmy_neg"):
+                dist_in = dist_in / 25.4
+            if cmd in ("walk_mmx_neg", "walk_mmy_neg"):
+                dist_in = -abs(dist_in)
+            elif cmd in ("walk_mmx_pos", "walk_mmy_pos"):
+                dist_in = abs(dist_in)
+            delta_x = dist_in if cmd in ("walk_x", "walk_mmx", "walk_mmx_pos", "walk_mmx_neg") else 0
+            delta_y = dist_in if cmd in ("walk_y", "walk_mmy", "walk_mmy_pos", "walk_mmy_neg") else 0
+            current_x = self.pen.phys.xpos
+            current_y = self.pen.phys.ypos
+            target_x = current_x + delta_x
+            target_y = current_y + delta_y
+            target_x = min(max(target_x, self.bounds[0][0]), self.bounds[1][0])
+            target_y = min(max(target_y, self.bounds[0][1]), self.bounds[1][1])
+            clipped_dx = target_x - current_x
+            clipped_dy = target_y - current_y
+            if abs(clipped_dx) < 1e-9 and abs(clipped_dy) < 1e-9:
+                self.user_message_fun(gettext.gettext("点动目标超出行程，已忽略。"))
+                return
+            speed_in_s = self.speed_penup if self.pen.phys.z_up else self.speed_pendown
+            ok, _lines = serial_utils.grbl_jog(
+                self.plot_status,
+                clipped_dx,
+                clipped_dy,
+                speed_in_s,
+                timeout_s=max(1.0, float(self.options.grbl_command_timeout)))
+            if not ok:
+                logger.error(gettext.gettext("Failed to execute Grbl jog command."))
+                return
+            self.pen.phys.xpos = target_x
+            self.pen.phys.ypos = target_y
+            return
+
+        if cmd in ("bootload", "read_name", "write_name", "list_names"):
+            logger.error(gettext.gettext("当前绘图机版插件不支持该命令。"))
+            return
+
+        logger.error(gettext.gettext("未识别的手动命令。"))
 
 
     def prepare_document(self):
@@ -641,6 +953,19 @@ class AxiDraw(inkex.Effect):
                 """
                 Clip digest at plot bounds
                 """
+                if self.params.bounds_auto_scale:
+                    digest_bounds = self._digest_bounds()
+                    if digest_bounds is not None:
+                        min_x, min_y, max_x, max_y = digest_bounds
+                        tolerance = self.params.bounds_tolerance
+                        exceeds = (
+                            min_x < (self.bounds[0][0] - tolerance) or
+                            min_y < (self.bounds[0][1] - tolerance) or
+                            max_x > (self.bounds[1][0] + tolerance) or
+                            max_y > (self.bounds[1][1] + tolerance)
+                        )
+                        if exceeds:
+                            self._scale_digest_to_bounds()
                 if self.rotate_page:
                     doc_bounds = [self.svg_height + 1e-9, self.svg_width + 1e-9]
                 else:
@@ -668,7 +993,31 @@ class AxiDraw(inkex.Effect):
             plot_optimizations.supersample(self.digest,\
                 self.params.segment_supersample_tolerance)
 
+            if self.options.controller == "grbl_esp32":
+                optimize_stats = plot_optimizations.optimize_digest_for_grbl(
+                    self.digest,
+                    self.params.grbl_min_segment,
+                    self.params.grbl_collinear_tolerance)
+                if optimize_stats["vertices_removed"] > 0 and not self.plot_status.secondary:
+                    self.user_message_fun(gettext.gettext(
+                        "路径优化已移除 {0} 个冗余节点，涉及 {1} 条路径。").format(
+                            optimize_stats["vertices_removed"],
+                            optimize_stats["paths_touched"]))
+                sparse_cfg = self._auto_sparse_settings()
+                if sparse_cfg["enabled"]:
+                    sparse_stats = plot_optimizations.auto_sparse_linework(
+                        self.digest,
+                        sparse_cfg["threshold"],
+                        min_dense_run=sparse_cfg["min_run"],
+                        min_candidate_count=self.params.auto_sparse_line_min_count)
+                    if sparse_stats["paths_removed"] > 0 and not self.plot_status.secondary:
+                        self.user_message_fun(gettext.gettext(
+                            "自动降级已稀疏线稿：移除 {0} 条密排线，涉及 {1} 个图层。").format(
+                                sparse_stats["paths_removed"],
+                                sparse_stats["layers_touched"]))
+
             self.randomize_optimize(True) # Do plot randomization & optimizations
+            self._enable_auto_layer_pauses()
 
         # If it is necessary to save as a Plob, that conversion can be made like so:
         # plob = self.digest.to_plob() # Unnecessary re-conversion for testing only
@@ -693,6 +1042,22 @@ class AxiDraw(inkex.Effect):
 
         if first_copy and self.options.digest: # Will return Plob, not full SVG; back it up here.
             self.backup_original = copy.deepcopy(self.digest.to_plob())
+
+    def _enable_auto_layer_pauses(self):
+        """Automatically insert pause markers at each new plotted layer."""
+        if not bool(getattr(self.options, "auto_pause_between_layers",
+                            getattr(self.params, "auto_pause_between_layers", False))):
+            return
+        if not self.digest or not self.digest.layers:
+            return
+        seen_first = False
+        for layer in self.digest.layers:
+            if not layer.paths:
+                continue
+            if not seen_first:
+                seen_first = True
+                continue
+            layer.props.pause = True
 
 
     def plot_document(self):
@@ -826,10 +1191,23 @@ class AxiDraw(inkex.Effect):
         """
 
         if layer_props.pause: # Insert programmatic pause
+            if self.options.preview:
+                layer_props.pause = False
+                return
             if not self.plot_status.progress.dry_run: # Skip during dry run only
-                if self.plot_status.stopped == 0: # If not already stopped
-                    self.plot_status.stopped = -1 # Set flag for programmatic pause
-                self.pause_check()  # Carry out the pause, or resume if required.
+                manual_pen_change = bool(getattr(
+                    self.options,
+                    "manual_pen_change",
+                    getattr(self.params, "manual_pen_change", False)))
+                if manual_pen_change and self.options.mode in ("plot", "layers", "res_plot"):
+                    if not self.run_pen_change_flow():
+                        if self.plot_status.stopped == 0:
+                            self.plot_status.stopped = -1
+                        self.pause_check()
+                else:
+                    if self.plot_status.stopped == 0: # If not already stopped
+                        self.plot_status.stopped = -1 # Set flag for programmatic pause
+                    self.pause_check()  # Carry out the pause, or resume if required.
 
         old_speed = self.layer_speed_pendown
 
@@ -846,6 +1224,140 @@ class AxiDraw(inkex.Effect):
 
         if self.layer_speed_pendown != old_speed:
             self.enable_motors()  # Set speed value variables for this layer.
+
+    def run_pen_change_flow(self):
+        """
+        Pen-change flow modeled after sender-based tool change:
+        save plotting position, move to Home for swapping pen, prompt user,
+        then return to saved position and continue.
+        """
+        saved_x = self.pen.phys.xpos
+        saved_y = self.pen.phys.ypos
+        if saved_x is None or saved_y is None:
+            return False
+        self.user_message_fun(gettext.gettext(
+            "检测到图层切换，准备手动换笔。"))
+        try:
+            self.pen.pen_raise(self)
+            if bool(getattr(self.options, "pen_change_to_home",
+                            getattr(self.params, "pen_change_to_home", True))):
+                self.go_to_position(self.params.start_pos_x, self.params.start_pos_y)
+            if bool(getattr(self.options, "pen_change_prompt",
+                            getattr(self.params, "pen_change_prompt", True))):
+                if not self.confirm_pen_change():
+                    self.user_message_fun(gettext.gettext("用户取消了换笔，已暂停绘图。"))
+                    return False
+            self.go_to_position(saved_x, saved_y)
+            return True
+        except Exception:
+            logger.error(gettext.gettext("换笔流程执行失败；为安全起见，绘图已暂停。"))
+            return False
+
+    def confirm_pen_change(self):
+        """Prompt user to confirm pen change and continue plotting."""
+        prompt_text = gettext.gettext(
+            "请现在手动换笔，完成后点击“是”继续绘图。")
+        if self.options.mode == "interactive":
+            return False
+        if self.plot_status.cli_api:
+            self.user_message_fun(prompt_text)
+            try:
+                user_reply = input("Continue after pen change? [y/N]: ").strip().lower()
+            except EOFError:
+                return False
+            return user_reply in ("y", "yes")
+        try:
+            if tkinter is None or messagebox is None:
+                return False
+            root = tkinter.Tk()
+            root.withdraw()
+            result = messagebox.askyesno("绘图机换笔", prompt_text)
+            root.destroy()
+            return result
+        except Exception:
+            self.user_message_fun(prompt_text)
+            return False
+
+    def _digest_bounds(self):
+        """Return digest bounds as (min_x, min_y, max_x, max_y), or None."""
+        if not self.digest or not self.digest.layers:
+            return None
+        min_x = None
+        min_y = None
+        max_x = None
+        max_y = None
+        for layer in self.digest.layers:
+            for path in layer.paths:
+                if not path.subpaths:
+                    continue
+                for subpath in path.subpaths:
+                    for vertex in subpath:
+                        x_value = vertex[0]
+                        y_value = vertex[1]
+                        min_x = x_value if min_x is None else min(min_x, x_value)
+                        min_y = y_value if min_y is None else min(min_y, y_value)
+                        max_x = x_value if max_x is None else max(max_x, x_value)
+                        max_y = y_value if max_y is None else max(max_y, y_value)
+        if min_x is None:
+            return None
+        return min_x, min_y, max_x, max_y
+
+    def _confirm_bounds_auto_scale(self, scale_factor):
+        """Prompt user to approve automatic scaling into travel bounds."""
+        prompt_text = gettext.gettext(
+            f"Detected out-of-bounds drawing. Auto-scale to fit travel area "
+            f"(scale {scale_factor:.3f}) and continue?")
+        if self.plot_status.cli_api:
+            self.user_message_fun(prompt_text)
+            try:
+                user_reply = input("Apply auto-scale and continue? [y/N]: ").strip().lower()
+            except EOFError:
+                return False
+            return user_reply in ("y", "yes")
+        if tkinter is None or messagebox is None:
+            self.user_message_fun(prompt_text)
+            return False
+        try:
+            root = tkinter.Tk()
+            root.withdraw()
+            result = messagebox.askyesno("AxiDraw Bounds Warning", prompt_text)
+            root.destroy()
+            return result
+        except Exception:
+            self.user_message_fun(prompt_text)
+            return False
+
+    def _scale_digest_to_bounds(self):
+        """Scale digest uniformly into machine bounds; return True if applied."""
+        digest_bounds = self._digest_bounds()
+        if digest_bounds is None:
+            return False
+        min_x, min_y, max_x, max_y = digest_bounds
+        width = max(max_x - min_x, 1e-9)
+        height = max(max_y - min_y, 1e-9)
+        target_min_x = self.bounds[0][0]
+        target_min_y = self.bounds[0][1]
+        target_width = max(self.bounds[1][0] - self.bounds[0][0], 1e-9)
+        target_height = max(self.bounds[1][1] - self.bounds[0][1], 1e-9)
+        scale_factor = min(target_width / width, target_height / height)
+        if scale_factor >= 0.999999:
+            return False
+        if self.params.bounds_auto_scale_prompt:
+            if not self._confirm_bounds_auto_scale(scale_factor):
+                return False
+        for layer in self.digest.layers:
+            for path in layer.paths:
+                if not path.subpaths:
+                    continue
+                for subpath in path.subpaths:
+                    for vertex in subpath:
+                        vertex[0] = (vertex[0] - min_x) * scale_factor + target_min_x
+                        vertex[1] = (vertex[1] - min_y) * scale_factor + target_min_y
+        self.digest.width = self.digest.width * scale_factor
+        self.digest.height = self.digest.height * scale_factor
+        self.user_message_fun(gettext.gettext(
+            f"Applied auto-scale factor {scale_factor:.3f} to fit machine travel bounds."))
+        return True
 
     def plot_polyline(self, vertex_list):
         """
@@ -893,6 +1405,13 @@ class AxiDraw(inkex.Effect):
         """ Manage Pause functionality and stop plot if requested or at certain errors """
         if self.plot_status.stopped > 0:
             return  # Plot is already stopped. No need to proceed.
+
+        if serial_utils.is_grbl(self.plot_status) and not self.options.preview:
+            status_line = serial_utils.grbl_query_status(self.plot_status, timeout_s=0.15)
+            if status_line and status_line.startswith("<Alarm"):
+                self.user_message_fun(gettext.gettext(
+                    "Plot paused because the Grbl controller reported ALARM state."))
+                self.plot_status.stopped = -104
 
         pause_button_pressed = self.plot_status.resume.check_button(self)
 
@@ -968,7 +1487,7 @@ class AxiDraw(inkex.Effect):
             local_speed_pendown = self.options.speed_pendown
 
         if self.options.resolution == 1:  # High-resolution ("Super") mode
-            if not self.options.preview:
+            if not self.options.preview and not serial_utils.is_grbl(self.plot_status):
                 res_1, res_2 = ebb_motion.query_enable_motors(self.plot_status.port, False)
                 if not (res_1 == 1 and res_2 == 1): # Do not re-enable if already enabled
                     ebb_motion.sendEnableMotors(self.plot_status.port, 1)  # 16X microstepping
@@ -978,7 +1497,7 @@ class AxiDraw(inkex.Effect):
             if self.options.const_speed:
                 self.speed_pendown = self.speed_pendown * self.params.const_speed_factor_hr
         else:  # i.e., self.options.resolution == 2; Low-resolution ("Normal") mode
-            if not self.options.preview:
+            if not self.options.preview and not serial_utils.is_grbl(self.plot_status):
                 res_1, res_2 = ebb_motion.query_enable_motors(self.plot_status.port, False)
                 if not (res_1 == 2 and res_2 == 2): # Do not re-enable if already enabled
                     ebb_motion.sendEnableMotors(self.plot_status.port, 2)  # 8X microstepping
@@ -988,6 +1507,17 @@ class AxiDraw(inkex.Effect):
             self.speed_pendown = local_speed_pendown * self.params.speed_lim_xy_lr / 110.0
             if self.options.const_speed:
                 self.speed_pendown = self.speed_pendown * self.params.const_speed_factor_lr
+        if serial_utils.is_grbl(self.plot_status) and not self.options.preview:
+            timeout_s = max(1.0, float(self.options.grbl_command_timeout))
+            ok_init, failed_cmd, _result = serial_utils.grbl_initialize_motion(
+                self.plot_status,
+                timeout_s=timeout_s,
+                zero_z=True)
+            if not ok_init:
+                self.plot_status.stopped = 104
+                logger.error(
+                    gettext.gettext(
+                        "Failed to initialize Grbl motion mode ({0}).").format(failed_cmd))
         # ebb_serial.command(self.plot_status.port, "CU,3,1\r") # EBB 2.8.1+: Enable data-low LED
 
     def query_ebb_voltage(self):
@@ -1023,7 +1553,7 @@ class AxiDraw(inkex.Effect):
     def disconnect(self):
         '''End serial session; disconnect from AxiDraw '''
         if self.plot_status.port:
-            ebb_serial.closePort(self.plot_status.port)
+            serial_utils.disconnect_port(self.plot_status)
         self.plot_status.port = None
         self.connected = False  # Python interactive API variable
 

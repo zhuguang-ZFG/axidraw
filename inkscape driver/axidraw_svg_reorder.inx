@@ -1,31 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-  <name>Plot Optimization (Legacy)</name>
+  <name>路径优化（兼容旧版）</name>
   <id>command.evilmadscientist.axidraw.reorder</id>
   <dependency type="executable" location="extensions">axidraw_svg_reorder.py</dependency>
 
-<label indent="5" appearance="header">AxiDraw Plot Optimization Tool</label>
+<label indent="5" appearance="header">路径优化工具</label>
 
 <label xml:space="preserve">
-This utility will re-order objects within each layer of your
-document, to reduce pen-up travel distance and time.
+该工具会重新排序文档各图层中的对象，以减少抬笔移动距离和总耗时。
 </label>
 
-<param name="reordering" gui-text="Group Handling" type="optiongroup" 
+<param name="reordering" gui-text="对象分组处理" type="optiongroup" 
     appearance="radio" indent="2" >
-<option value="2">Reorder within groups</option>
-<option value="1">Preserve groups</option>
-<option value="3">Break apart groups</option>
+<option value="2">在组内重排</option>
+<option value="1">保留原分组</option>
+<option value="3">打散后重排</option>
 </param>
 
 <label indent="3" xml:space="preserve">
-v 2.8. Copyright 2023, Evil Mad Scientist</label>
+v2.8，版权所有 2023 Evil Mad Scientist</label>
 
 
 <effect needs-live-preview="false">
     <object-type>all</object-type>
     <effects-menu>
-      <submenu name="AxiDraw Utilities"/>
+      <submenu name="DynamicNest 工具"/>
     </effects-menu>
   </effect>
   <script>

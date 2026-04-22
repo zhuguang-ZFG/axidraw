@@ -116,6 +116,126 @@ def core_options(config):
                         type=str, action="store", dest="port",\
                         default=config["port"],\
                         help="Serial port or named AxiDraw to use")
+    options.add_argument("--port_choice",\
+                        type=str, action="store", dest="port_choice",\
+                        default=config.get("port_choice", "auto"),\
+                        help="Quick-select serial port from UI dropdown; 'auto' to skip.")
+
+    options.add_argument("--controller",\
+                        type=str, action="store", dest="controller",\
+                        default=config.get("controller", "grbl_esp32"),\
+                        help="Controller backend: 'grbl_esp32'.")
+
+    options.add_argument("--grbl_baud_rate",\
+                        type=int, action="store", dest="grbl_baud_rate",\
+                        default=config.get("grbl_baud_rate", 115200),\
+                        help="Serial baud rate for Grbl backend.")
+
+    options.add_argument("--grbl_auto_fetch",\
+                        type=inkex.boolean_option, action="store", dest="grbl_auto_fetch",\
+                        default=config.get("grbl_auto_fetch", True),\
+                        help="Auto-fetch $$ settings from Grbl on connect.")
+
+    options.add_argument("--grbl_command_timeout",\
+                        type=float, action="store", dest="grbl_command_timeout",\
+                        default=config.get("grbl_command_timeout", 2.0),\
+                        help="Command timeout (seconds) for Grbl backend.")
+    options.add_argument("--grbl_pen_up_cmd",\
+                        type=str, action="store", dest="grbl_pen_up_cmd",\
+                        default=config.get("grbl_pen_up_cmd", "G1 Z0 F3000"),\
+                        help="G-code command for pen-up in Grbl mode.")
+    options.add_argument("--grbl_pen_down_cmd",\
+                        type=str, action="store", dest="grbl_pen_down_cmd",\
+                        default=config.get("grbl_pen_down_cmd", "G1 Z5 F3000"),\
+                        help="G-code command for pen-down in Grbl mode.")
+    options.add_argument("--grbl_pen_down_slow_feed",\
+                        type=float, action="store", dest="grbl_pen_down_slow_feed",\
+                        default=config.get("grbl_pen_down_slow_feed", 600.0),\
+                        help="If > 0, use this slower mm/min feed for pen-down Z moves in Grbl mode.")
+    options.add_argument("--grbl_pen_down_settle_ms",\
+                        type=int, action="store", dest="grbl_pen_down_settle_ms",\
+                        default=config.get("grbl_pen_down_settle_ms", 180),\
+                        help="Extra settle delay after pen-down in Grbl mode, milliseconds.")
+    options.add_argument("--grbl_disable_motors_cmd",\
+                        type=str, action="store", dest="grbl_disable_motors_cmd",\
+                        default=config.get("grbl_disable_motors_cmd", "M18"),\
+                        help="G-code command for disabling steppers in Grbl mode.")
+    options.add_argument("--grbl_axis_swap_xy",\
+                        type=inkex.boolean_option, action="store", dest="grbl_axis_swap_xy",\
+                        default=config.get("grbl_axis_swap_xy", False),\
+                        help="Software axis transform: swap X and Y for Grbl backend.")
+    options.add_argument("--grbl_axis_invert_x",\
+                        type=inkex.boolean_option, action="store", dest="grbl_axis_invert_x",\
+                        default=config.get("grbl_axis_invert_x", False),\
+                        help="Software axis transform: invert X sign for Grbl backend.")
+    options.add_argument("--grbl_axis_invert_y",\
+                        type=inkex.boolean_option, action="store", dest="grbl_axis_invert_y",\
+                        default=config.get("grbl_axis_invert_y", False),\
+                        help="Software axis transform: invert Y sign for Grbl backend.")
+    options.add_argument("--grbl_set_dir_mask",\
+                        type=int, action="store", dest="grbl_set_dir_mask",\
+                        default=config.get("grbl_set_dir_mask", -1),\
+                        help="In axis_apply mode, write this integer bitmask to $3.")
+    options.add_argument("--grbl_set_homing_dir_mask",\
+                        type=int, action="store", dest="grbl_set_homing_dir_mask",\
+                        default=config.get("grbl_set_homing_dir_mask", -1),\
+                        help="In axis_apply mode, write this integer bitmask to $23.")
+    options.add_argument("--grbl_dir_invert_x",\
+                        type=inkex.boolean_option, action="store", dest="grbl_dir_invert_x",\
+                        default=config.get("grbl_dir_invert_x", False),\
+                        help="In axis_apply mode, set X bit in Grbl $3 mask.")
+    options.add_argument("--grbl_dir_invert_y",\
+                        type=inkex.boolean_option, action="store", dest="grbl_dir_invert_y",\
+                        default=config.get("grbl_dir_invert_y", False),\
+                        help="In axis_apply mode, set Y bit in Grbl $3 mask.")
+    options.add_argument("--grbl_dir_invert_z",\
+                        type=inkex.boolean_option, action="store", dest="grbl_dir_invert_z",\
+                        default=config.get("grbl_dir_invert_z", False),\
+                        help="In axis_apply mode, set Z bit in Grbl $3 mask.")
+    options.add_argument("--grbl_home_invert_x",\
+                        type=inkex.boolean_option, action="store", dest="grbl_home_invert_x",\
+                        default=config.get("grbl_home_invert_x", False),\
+                        help="In axis_apply mode, set X bit in Grbl $23 mask.")
+    options.add_argument("--grbl_home_invert_y",\
+                        type=inkex.boolean_option, action="store", dest="grbl_home_invert_y",\
+                        default=config.get("grbl_home_invert_y", False),\
+                        help="In axis_apply mode, set Y bit in Grbl $23 mask.")
+    options.add_argument("--grbl_home_invert_z",\
+                        type=inkex.boolean_option, action="store", dest="grbl_home_invert_z",\
+                        default=config.get("grbl_home_invert_z", False),\
+                        help="In axis_apply mode, set Z bit in Grbl $23 mask.")
+    options.add_argument("--manual_pen_change",\
+                        type=inkex.boolean_option, action="store", dest="manual_pen_change",\
+                        default=config.get("manual_pen_change", False),\
+                        help="Enable pause-based pen change flow between layers.")
+    options.add_argument("--pen_change_to_home",\
+                        type=inkex.boolean_option, action="store", dest="pen_change_to_home",\
+                        default=config.get("pen_change_to_home", True),\
+                        help="Move to home during pen change flow.")
+    options.add_argument("--pen_change_prompt",\
+                        type=inkex.boolean_option, action="store", dest="pen_change_prompt",\
+                        default=config.get("pen_change_prompt", True),\
+                        help="Prompt user to confirm pen change before resuming.")
+    options.add_argument("--auto_pause_between_layers",\
+                        type=inkex.boolean_option, action="store", dest="auto_pause_between_layers",\
+                        default=config.get("auto_pause_between_layers", False),\
+                        help="Automatically pause before each non-empty layer after the first.")
+    options.add_argument("--bounds_auto_scale",\
+                        type=inkex.boolean_option, action="store", dest="bounds_auto_scale",\
+                        default=config.get("bounds_auto_scale", False),\
+                        help="Automatically scale oversized plots to fit travel bounds.")
+    options.add_argument("--bounds_auto_scale_prompt",\
+                        type=inkex.boolean_option, action="store", dest="bounds_auto_scale_prompt",\
+                        default=config.get("bounds_auto_scale_prompt", True),\
+                        help="Prompt before applying automatic bounds scaling.")
+    options.add_argument("--auto_sparse_linework",\
+                        type=inkex.boolean_option, action="store", dest="auto_sparse_linework",\
+                        default=config.get("auto_sparse_linework", True),\
+                        help="Automatically thin dense line-only artwork before plotting.")
+    options.add_argument("--auto_sparse_line_mode",\
+                        type=str, action="store", dest="auto_sparse_line_mode",\
+                        default=config.get("auto_sparse_line_mode", "standard"),\
+                        help="Dense linework thinning mode: off/conservative/standard/aggressive.")
 
     options.add_argument("--setup_type",\
                         type=str, action="store", dest="setup_type",\
@@ -179,6 +299,11 @@ def core_options(config):
                         default="none", \
                         help="Secondary GUI tab.")
 
+    options.add_argument("--language",\
+                        action="store", type=str, dest="language",\
+                        default=config.get("language", "auto"),\
+                        help="UI language override: auto/en/zh_CN.")
+
     return options
 
 def core_mode_options(config):
@@ -196,9 +321,10 @@ def core_mode_options(config):
                         type=str, action="store", dest="manual_cmd",\
                         default=config["manual_cmd"],\
                         help="Manual command. One of: [fw_version, raise_pen, lower_pen, "\
-                        + "walk_x, walk_y, walk_mmx, walk_mmy, walk_home, enable_xy, "\
-                        + "disable_xy, res_read, res_adj_in, res_adj_mm, bootload, "\
-                        + "strip_data, read_name, list_names, write_name]. Default: fw_version")
+                        + "walk_x, walk_y, walk_mmx, walk_mmy, walk_mmx_pos, walk_mmx_neg, "\
+                        + "walk_mmy_pos, walk_mmy_neg, walk_home, enable_xy, "\
+                        + "disable_xy, axis_read, axis_apply, status_refresh, home_cycle, ports_scan, "\
+                        + "res_read, res_adj_in, res_adj_mm, strip_data]. Default: fw_version")
 
     options.add_argument("--dist", "--walk_dist",\
                         type=float, action="store", dest="dist",\

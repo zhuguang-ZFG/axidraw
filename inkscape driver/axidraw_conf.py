@@ -82,13 +82,50 @@ penlift = 1             # pen lift servo configuration (1-3).
 
 port = None             # Serial port or named AxiDraw to use
                             # None (Default) will plot to first unit located
+port_choice = "auto"    # Optional UI dropdown selection for serial port.
+                            # "auto" keeps automatic scan behavior.
 
-port_config = 0         # Serial port behavior option (0-2)
-                            # 0: Plot to first unit found, unless port is specified (Default)
-                            # 1: Plot to first AxiDraw unit located
+port_config = 1         # Serial port behavior option (0-2)
+                            # 0: Plot to first unit found, unless port is specified
+                            # 1: Plot to first AxiDraw unit located (Default; auto connect)
                             # 2: Plot to a specific AxiDraw only, given by port
 
-auto_rotate = True      # Auto-select portrait vs landscape orientation
+controller = 'grbl_esp32'  # Motion controller backend:
+                            #   'ebb' (AxiDraw board protocol), or 'grbl_esp32' (default in this fork)
+
+grbl_baud_rate = 115200 # Grbl serial baud rate
+grbl_auto_fetch = True  # Auto-read '$$' settings after connecting in Grbl mode
+grbl_command_timeout = 2.0  # Serial command timeout for Grbl mode, seconds
+
+# NOTE: These defaults are machine-specific; verify against your firmware profile.
+# Typical Z-stepper profile example: up 'G1 Z0 F3000', down 'G1 Z5 F3000'
+grbl_pen_up_cmd = 'G1 Z0 F3000'  # G-code for pen-up in Grbl mode
+grbl_pen_down_cmd = 'G1 Z5 F3000'  # Base G-code for pen-down in Grbl mode
+grbl_pen_down_slow_feed = 600.0 # If > 0, override pen-down G1/G0 feed with a gentler mm/min value
+grbl_pen_down_settle_ms = 180 # Extra pause after Grbl pen-down, to let pen settle on paper
+grbl_disable_motors_cmd = 'M18' # G-code for disabling steppers in Grbl mode
+grbl_axis_swap_xy = True # Software-level XY swap for Grbl motion output
+grbl_axis_invert_x = True # Software-level invert X sign for Grbl motion output
+grbl_axis_invert_y = False # Software-level invert Y sign for Grbl motion output
+grbl_min_segment = 0.0012 # Drop consecutive segments shorter than this length (inches)
+grbl_collinear_tolerance = 0.0008 # Merge nearly-collinear middle vertices within this error (inches)
+auto_sparse_linework = True # If True, automatically thin dense parallel line-only artwork.
+auto_sparse_line_mode = 'standard' # off / conservative / standard / aggressive
+auto_sparse_line_threshold = 0.0035 # Maximum median spacing (inches) considered "dense" for auto sparsify.
+auto_sparse_line_min_count = 2000 # Minimum 2-point path count before linework sparsify is considered.
+auto_sparse_line_min_run = 12 # Minimum dense run length before alternating lines are removed.
+grbl_set_dir_mask = -1 # If >=0, write this value to Grbl $3 in axis_apply mode
+grbl_set_homing_dir_mask = -1 # If >=0, write this value to Grbl $23 in axis_apply mode
+grbl_dir_invert_x = False # In axis_apply mode, include X bit in $3 mask
+grbl_dir_invert_y = False # In axis_apply mode, include Y bit in $3 mask
+grbl_dir_invert_z = False # In axis_apply mode, include Z bit in $3 mask
+grbl_home_invert_x = False # In axis_apply mode, include X bit in $23 mask
+grbl_home_invert_y = False # In axis_apply mode, include Y bit in $23 mask
+grbl_home_invert_z = False # In axis_apply mode, include Z bit in $23 mask
+
+language = 'auto'       # Language override: auto / en / zh_CN
+
+auto_rotate = False     # Auto-select portrait vs landscape orientation
                             # Default: True
 
 reordering = 0          # Plot optimization option (0-4; 3 is deprecated)
@@ -154,6 +191,12 @@ options_message = True  # If True (default), display an advisory message if Appl
                         #   no plot has been initiated.
 
 report_lifts = False    # Report number of pen lifts when reporting plot duration (Default: False)
+manual_pen_change = True # If True, layer pause triggers pen-change flow instead of immediate stop.
+auto_pause_between_layers = True # If True, automatically insert pause at each new plotted layer.
+pen_change_to_home = True # If True, move to Home corner before pen-change prompt.
+pen_change_prompt = True # If True, ask user to confirm pen change before continuing.
+bounds_auto_scale = True # If True, auto-scale oversized drawings into travel bounds before clipping.
+bounds_auto_scale_prompt = False # If True, ask user confirmation before applying auto-scale.
 
 auto_clip_lift = True   # Option applicable only to XY movements in the Interactive Python API.
                         #   If True (default), keep pen up when motion is clipped by travel bounds.

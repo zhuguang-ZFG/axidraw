@@ -12,7 +12,12 @@ OPTION_NAMES = ['mode', 'speed_pendown', 'speed_penup', 'accel', 'pen_pos_down',
                     'random_start', 'hiding', 'reordering', 'no_rotate', 'const_speed',
                     'report_time','manual_cmd', 'dist', 'layer', 'copies', 'page_delay',
                     'preview', 'rendering', 'model', 'penlift', 'port', 'port_config', 'webhook',
-                    'webhook_url', 'digest', 'progress']
+                    'webhook_url', 'digest', 'progress', 'controller', 'grbl_baud_rate',
+                    'grbl_auto_fetch', 'grbl_command_timeout', 'grbl_axis_swap_xy',
+                    'grbl_axis_invert_x', 'grbl_axis_invert_y', 'grbl_set_dir_mask',
+                    'grbl_set_homing_dir_mask', 'grbl_dir_invert_x', 'grbl_dir_invert_y',
+                    'grbl_dir_invert_z', 'grbl_home_invert_x', 'grbl_home_invert_y',
+                    'grbl_home_invert_z', 'language']
 
 def handle_info_cases(no_flag_arg, quick_help, cli_version, software_name = None, version = None):
     ''' handles the simple cases like "version" and "help" '''

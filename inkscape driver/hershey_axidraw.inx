@@ -1,119 +1,105 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-  <name>Hershey Text</name>
+  <name>单线字体文本</name>
   <id>org.evilmad.text.hershey-axi</id>
   <dependency type="executable" location="extensions">hershey.py</dependency>
   <param name="tab" type="notebook">
-    <page name="render" gui-text="Render">
+    <page name="render" gui-text="生成文本">
 
 <label indent="1" appearance="header" xml:space="preserve">
-Hershey Text
+单线字体文本
 </label>
 
-<label indent="2" xml:space="preserve">A tool to replace text with stroke fonts
+<label indent="2" xml:space="preserve">将普通文本替换为单线描边字体的工具
 
-Version 3.0.2, 2019-09-07
+版本 3.0.2，2019-09-07
 
 
 </label>
 
-	<param indent="1" name="fontface" type="optiongroup" appearance="combo" gui-text="Font face: ">
-		<option value="HersheySans1">Hershey Sans 1-stroke</option>
-		<option value="HersheySansMed">Hershey Sans medium</option>
+	<param indent="1" name="fontface" type="optiongroup" appearance="combo" gui-text="字体：">
+		<option value="HersheySans1">Hershey Sans 单线</option>
+		<option value="HersheySansMed">Hershey Sans 中等</option>
 
-		<option value="HersheySerifMed">Hershey Serif medium</option>
-		<option value="HersheySerifMedItalic">Hershey Serif medium italic</option>
+		<option value="HersheySerifMed">Hershey Serif 中等</option>
+		<option value="HersheySerifMedItalic">Hershey Serif 中等斜体</option>
 
-		<option value="HersheySerifBold">Hershey Serif bold</option>
-		<option value="HersheySerifBoldItalic">Hershey Serif bold italic</option>
+		<option value="HersheySerifBold">Hershey Serif 粗体</option>
+		<option value="HersheySerifBoldItalic">Hershey Serif 粗体斜体</option>
 
-		<option value="HersheyScript1">Hershey Script 1-stroke</option>
-		<option value="HersheyScriptMed">Hershey Script medium</option>
+		<option value="HersheyScript1">Hershey 手写体单线</option>
+		<option value="HersheyScriptMed">Hershey 手写体中等</option>
 
-		<option value="HersheyGothEnglish">Hershey Gothic English</option>
+		<option value="HersheyGothEnglish">Hershey 英文哥特体</option>
 
-		<!-- Block below this are derived from fonts licensed under SIL Open Font License -->
 		<option value="EMSAllure">EMS Allure</option>
 
 		<option value="EMSElfin">EMS Elfin</option>
 		<option value="EMSFelix">EMS Felix</option>
 
 		<option value="EMSNixish">EMS Nixish</option>
-		<option value="EMSNixishItalic">EMS Nixish Italic</option>
+		<option value="EMSNixishItalic">EMS Nixish 斜体</option>
 
 		<option value="EMSOsmotron">EMS Osmotron</option>
 		<option value="EMSReadability">EMS Readability</option>
-		<option value="EMSReadabilityItalic">EMS Readability Italic</option>
+		<option value="EMSReadabilityItalic">EMS Readability 斜体</option>
 		<option value="EMSTech">EMS Tech</option>
-		<!-- Block above this are derived from fonts licensed under SIL Open Font License -->
 
-		<option value="other">Other (given below)</option>
+		<option value="other">其他（下方指定）</option>
       </param>
 
 <label xml:space="preserve">
-Other SVG font name or path (if "Other" selected above):
+其他 SVG 字体名称或路径（仅在上方选择“其他”时使用）：
 </label>
-<param name="otherfont" type="string" indent="2" gui-text="Name/Path:">HersheySans1</param>
+<param name="otherfont" type="string" indent="2" gui-text="名称/路径：">HersheySans1</param>
 
-<param name="preserve" indent="4" type="bool" gui-text="Preserve original text" >false</param>
+<param name="preserve" indent="4" type="bool" gui-text="保留原始文本" >false</param>
 
 </page>
 
-<page name="utilities" gui-text="Utilities">
+<page name="utilities" gui-text="工具">
   <label appearance="header" xml:space="preserve">
-Hershey Text Utility Functions
+单线字体附加工具
   </label>
 
-  <param indent="2" name="action" type="optiongroup" appearance="combo" gui-text="Action: ">
-    <option value="sample"   >Generate font table</option>
-    <option value="table"    >Generate glyph table in selected font</option>
+  <param indent="2" name="action" type="optiongroup" appearance="combo" gui-text="操作：">
+    <option value="sample"   >生成字体示例表</option>
+    <option value="table"    >生成所选字体字形表</option>
   </param>
 
   <label xml:space="preserve">
 
-Sample text to use when generating font table:</label>
-<param indent="2" name="text" type="string" gui-text="Text:">
+生成字体示例表时使用的文本：</label>
+<param indent="2" name="text" type="string" gui-text="文本：">
 The Quick Brown Fox Jumps Over a Lazy Dog</param>
 
 </page>
 
 
-    <page name="help" gui-text="About">
+    <page name="help" gui-text="关于">
       <label xml:space="preserve">
-This extension renders all text (or all selected text)
-in your document into using specialized "stroke" or
-"engraving" fonts designed for plotters.
+这个扩展可将文档中的全部文本，或已选中文本，转换为适合绘图机使用的“单线字体/雕刻字体”路径。
 
-Whereas regular "outline" fonts (e.g., TrueType) work
-by filling in the region inside an invisible outline,
-engraving fonts are composed only of individual lines
-or strokes; much like human handwriting.
+普通轮廓字体（如 TrueType）依赖填充轮廓内部区域来显示文字；而单线字体只由单条线段或笔画组成，更接近手写轨迹。
 
-Engraving fonts are used for creating text paths that
-computer controlled drawing and cutting machines (from
-pen plotters to CNC routers) can efficiently follow.
+这类字体非常适合生成可被笔式绘图机、雕刻机和数控设备高效跟随的文本路径。
 
-A complete user guide is available to download at:
+完整用户指南可参考：
   http://wiki.evilmadscientist.com/hershey
 
-For extended help, click "Apply" with this tab selected.
+若需要更详细帮助，请在本页保持选中状态后点击“应用”。
 
   </label>
 </page>
 
 
-<page name="info3" gui-text="Credits">
+<page name="info3" gui-text="致谢">
 <label xml:space="preserve">
-The classic Hershey fonts included are derived from
-work by Dr. A. V. Hershey.
+内置的经典 Hershey 字体源自 A. V. Hershey 博士的工作。
 
-Additional modern "EMS" fonts in this distribution are
-derivatives created from fonts licensed under the SIL
-Open Font License.
+本发行版中附带的现代 “EMS” 字体，源自遵循 SIL Open Font License 授权的字体衍生版本。
 
-For full credits and license information, please read the
-credits embedded within the SVG fonts included with this
-distribution.
+完整致谢与许可信息，请查看随发行包附带 SVG 字体文件中的版权说明。
 </label>
 
 </page>
@@ -122,7 +108,7 @@ distribution.
   <effect needs-live-preview="true">
     <object-type>all</object-type>
     <effects-menu>
-      <submenu name="AxiDraw Utilities"/>
+      <submenu name="DynamicNest 工具"/>
     </effects-menu>
   </effect>
     <script>

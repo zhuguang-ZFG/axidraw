@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-<name>Disable XY Motors</name>
+<name>禁用 XY 电机</name>
 <id>command.evilmadscientist.axidraw_disable</id>
 <dependency type="extension">org.inkscape.output.svg.inkscape</dependency>
 <dependency type="executable" location="extensions">axidraw_control.py</dependency>
@@ -11,7 +11,7 @@
 <effect needs-live-preview="false">
     <object-type>all</object-type>
     <effects-menu>
-        <submenu name="AxiDraw Utilities"/>
+        <submenu name="DynamicNest 工具"/>
     </effects-menu>
 </effect>
 

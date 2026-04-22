@@ -31,6 +31,7 @@ from tqdm import tqdm
 from lxml import etree
 
 from axidrawinternal.plot_utils_import import from_dependency_import
+from axidrawinternal import serial_utils
 text_utils = from_dependency_import('plotink.text_utils')
 inkex = from_dependency_import('ink_extensions.inkex')
 ebb_motion = from_dependency_import('plotink.ebb_motion')
@@ -179,6 +180,8 @@ class ResumeStatus:
 
         if ad_ref.options.preview:
             return 0
+        if serial_utils.is_grbl(ad_ref.plot_status):
+            return 0
 
         time_now = time.time()
         if (time_now - self.button_timestamp) > ad_ref.params.button_interval:
@@ -196,6 +199,8 @@ class ResumeStatus:
     def clear_button(self, ad_ref):
         """ Query if button pressed, to clear the result and reset timestamp """
         if ad_ref.options.preview:
+            return
+        if serial_utils.is_grbl(ad_ref.plot_status):
             return
         self.button_timestamp =  time.time()
         ebb_motion.QueryPRGButton(ad_ref.plot_status.port, False)
@@ -518,6 +523,19 @@ class PlotStatus:
         self.port = None
         self.copies_to_plot = 1
         self.stopped = 0 # Status code. If a plot is stopped, record why.
+        self.controller = "grbl_esp32"
+        self.port_name = None
+        self.grbl_settings = {}
+        self.grbl_status = None
+        self.grbl_mpos_in = None
+        self.grbl_wpos_in = None
+        self.grbl_axis_swap_xy = False
+        self.grbl_axis_invert_x = False
+        self.grbl_axis_invert_y = False
+        self.grbl_rx_buffer_size = 128
+        self.grbl_pending_lengths = []
+        self.grbl_last_status_timestamp = 0
+        self.grbl_stream_error = None
         for key in self.CONFIG_ITEMS: # Create instance variables in __init__
             setattr(self, key, False)
         for key in self.VERSION_ITEMS: # Create instance variables in __init__
@@ -530,6 +548,19 @@ class PlotStatus:
     def apply_defaults(self):
         ''' Reset attributes to defaults '''
         self.port = None
+        self.controller = "grbl_esp32"
+        self.port_name = None
+        self.grbl_settings = {}
+        self.grbl_status = None
+        self.grbl_mpos_in = None
+        self.grbl_wpos_in = None
+        self.grbl_axis_swap_xy = False
+        self.grbl_axis_invert_x = False
+        self.grbl_axis_invert_y = False
+        self.grbl_rx_buffer_size = 128
+        self.grbl_pending_lengths = []
+        self.grbl_last_status_timestamp = 0
+        self.grbl_stream_error = None
         self.stopped = 0 # Default value 0 ("not stopped")
         self.delay_between_copies = False
 

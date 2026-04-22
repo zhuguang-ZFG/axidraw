@@ -32,13 +32,14 @@ import signal
 from threading import Event
 
 from axidrawinternal import axidraw   # https://github.com/evil-mad/axidraw
+from axidrawinternal import serial_utils
+from axidrawinternal import i18n
 from axidrawinternal.axidraw_options import common_options
 
 from axidrawinternal.plot_utils_import import from_dependency_import # plotink
 inkex = from_dependency_import('ink_extensions.inkex')
 exit_status = from_dependency_import('ink_extensions_utils.exit_status')
 message = from_dependency_import('ink_extensions_utils.message')
-ebb_serial = from_dependency_import('plotink.ebb_serial') # https://github.com/evil-mad/plotink
 
 USE_MULTIPROCESSING = False
 
@@ -61,6 +62,7 @@ class AxiDrawWrapperClass( inkex.Effect ):
             # use default configuration file
             params = import_module("axidrawinternal.axidraw_conf") # Configuration file
         self.params = params
+        i18n.init_gettext(params=params)
         self.status_code = 0
 
         # certain options are common to many extensions in this library
@@ -88,6 +90,7 @@ class AxiDrawWrapperClass( inkex.Effect ):
         Main entry point
         '''
         self.start_time = time.time()
+        i18n.init_gettext(options=self.options, params=self.params)
         self.options.mode = self.options.mode.strip("\"")
         self.verbose = False
 
@@ -105,6 +108,19 @@ class AxiDrawWrapperClass( inkex.Effect ):
                             '  Pressing "Apply" on this tab has no effect other\n' +
                             "  than displaying this message.")
             return
+
+        # UI convenience:
+        # - typed port means "force this port"
+        # - dropdown port means "prefer this port first, but still allow auto-fallback"
+        typed_port = (self.options.port or "").strip()
+        selected_port = getattr(self.options, "port_choice", "auto")
+        if typed_port:
+            self.options.port = typed_port
+            self.options.port_config = 2
+        else:
+            self.options.port = None
+            if selected_port and selected_port.lower() != "auto":
+                self.options.port_choice = selected_port
         '''
         USB port use option (self.options.port_config)
 
@@ -130,26 +146,26 @@ class AxiDrawWrapperClass( inkex.Effect ):
 
         if self.options.port_config == 3: # Use all available AxiDraw units.
             process_list = []
-            ebb_list = []
-            ebb_list = ebb_serial.listEBBports()
+            port_list = [(port_name, "Grbl serial port", "grbl")
+                for port_name in serial_utils.list_grbl_ports()]
 
-            if ebb_list:
+            if port_list:
                 primary_port = None
                 if self.options.port is not None:
-                    primary_port = ebb_serial.find_named_ebb(self.options.port)
+                    primary_port = self.options.port
 
-                for found_port in ebb_list:
-                    logger.info("Found an EBB:")
+                for found_port in port_list:
+                    logger.info("Found a serial target:")
                     logger.info(" Port name:   " + found_port[0])	# Port name
                     logger.info(" Description: " + found_port[1])	# Description
                     logger.info(" Hardware ID: " + found_port[2])	# Hardware ID
-                if len(ebb_list) == 1:
+                if len(port_list) == 1:
                     logger.info("Found a single AxiDraw via USB.")
                     self.plot_to_axidraw(None, True)
                 else:
                     if primary_port is None:
-                        primary_port = ebb_list[0][0]
-                    for index, found_port in enumerate(ebb_list):
+                        primary_port = port_list[0][0]
+                    for index, found_port in enumerate(port_list):
                         if found_port[0] == primary_port:
                             logger.info("found_port is primary: " + primary_port)
                             continue # We will launch primary after spawning other processes.
@@ -173,8 +189,8 @@ class AxiDrawWrapperClass( inkex.Effect ):
                     for process in process_list:
                         logger.info("Joining a process. ")
                         process.join()
-            else: # i.e., if not ebb_list
-                logger.error("No available axidraw units found on USB.")
+            else: # i.e., if no discovered ports
+                logger.error("No available Grbl-compatible units found on USB.")
                 logger.error("Please check your connection(s) and try again.")
                 return
         else:   # All cases except plotting to all available AxiDraw units:
@@ -210,7 +226,19 @@ class AxiDrawWrapperClass( inkex.Effect ):
             'no_rotate', 'const_speed', 'report_time', 'manual_cmd', 'dist',
             'layer', 'copies', 'page_delay', 'preview', 'rendering', 'model', 'penlift',
             'setup_type', 'resume_type', 'auto_rotate', 'resolution', 'hiding', 'reordering',
-            'random_start', 'webhook', 'webhook_url', 'digest', 'progress',]}
+            'random_start', 'webhook', 'webhook_url', 'digest', 'progress', 'controller',
+            'grbl_baud_rate', 'grbl_auto_fetch', 'grbl_command_timeout',
+            'grbl_pen_up_cmd', 'grbl_pen_down_cmd', 'grbl_pen_down_slow_feed',
+            'grbl_pen_down_settle_ms', 'grbl_disable_motors_cmd',
+            'manual_pen_change', 'auto_pause_between_layers',
+            'pen_change_to_home', 'pen_change_prompt',
+            'bounds_auto_scale', 'bounds_auto_scale_prompt',
+            'grbl_axis_swap_xy', 'grbl_axis_invert_x', 'grbl_axis_invert_y',
+            'grbl_set_dir_mask', 'grbl_set_homing_dir_mask',
+            'grbl_dir_invert_x', 'grbl_dir_invert_y', 'grbl_dir_invert_z',
+            'grbl_home_invert_x', 'grbl_home_invert_y', 'grbl_home_invert_z',
+            'port_choice',
+            'language',]}
         ad.options.__dict__.update(selected_options)
 
         ad.options.port = port

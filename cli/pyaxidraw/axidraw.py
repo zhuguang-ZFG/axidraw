@@ -36,6 +36,7 @@ import signal
 from lxml import etree
 
 from axidrawinternal import axidraw
+from axidrawinternal import i18n
 
 from axidrawinternal.plot_utils_import import from_dependency_import # plotink
 from axidrawinternal import boundsclip, serial_utils
@@ -64,6 +65,7 @@ class AxiDraw(axidraw.AxiDraw):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        i18n.init_gettext(options=self.options, params=self.params)
 
         self.document = None
         self.original_document = None
@@ -116,7 +118,8 @@ class AxiDraw(axidraw.AxiDraw):
         self.pen.turtle.z_up = True # Theoretical pen starts UP.
 
         # Query if button pressed, to clear the result:
-        ebb_motion.QueryPRGButton(self.plot_status.port)
+        if not serial_utils.is_grbl(self.plot_status):
+            ebb_motion.QueryPRGButton(self.plot_status.port)
         self.pen.servo_init(self)
         self.pen.pen_raise(self) # Raise pen
         self.enable_motors()         # Set plot resolution & speed & enable motors

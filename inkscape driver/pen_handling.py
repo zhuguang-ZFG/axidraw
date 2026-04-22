@@ -38,7 +38,9 @@ The classes defined by this module are:
 * PenStatus: Data storage class for pen lift status variables
 
 '''
+import re
 import time
+from axidrawinternal import serial_utils
 from axidrawinternal.plot_utils_import import from_dependency_import # plotink
 plot_utils = from_dependency_import('plotink.plot_utils')
 ebb_serial = from_dependency_import('plotink.ebb_serial')  # https://github.com/evil-mad/plotink
@@ -207,6 +209,22 @@ class PenHandler:
         self.status.reset()
         self.heights.use_temp_pen_height = False
 
+    @staticmethod
+    def _with_grbl_feed_override(command, feed_mm_min):
+        """Return G-code with feed replaced/appended when the command is a linear move."""
+        if feed_mm_min is None or feed_mm_min <= 0:
+            return command
+        command = str(command).strip()
+        if not command:
+            return command
+        upper = command.upper()
+        if not (upper.startswith("G0") or upper.startswith("G1")):
+            return command
+        feed_text = f"F{float(feed_mm_min):.0f}"
+        if re.search(r"(?i)\bF\s*[-+]?\d*\.?\d+\b", command):
+            return re.sub(r"(?i)\bF\s*[-+]?\d*\.?\d+\b", feed_text, command, count=1)
+        return f"{command} {feed_text}"
+
     def pen_raise(self, ad_ref):
         ''' Raise the pen '''
 
@@ -226,6 +244,19 @@ class PenHandler:
 
         if ad_ref.options.preview:
             ad_ref.preview.v_chart.rest(ad_ref, v_time)
+        elif serial_utils.is_grbl(ad_ref.plot_status):
+            result = serial_utils.grbl_send_result(
+                ad_ref.plot_status,
+                ad_ref.params.grbl_pen_up_cmd,
+                expect_ok=True,
+                timeout_s=max(1.0, float(ad_ref.options.grbl_command_timeout)))
+            if not result["ok"]:
+                ad_ref.plot_status.stopped = 104
+                ad_ref.user_message_fun(
+                    f"Grbl pen-up command failed ({result['kind']}); plotting stopped.")
+                return
+            if (v_time > 50) and (ad_ref.options.mode not in ["manual", "align", "cycle"]):
+                time.sleep(float(v_time - 30) / 1000.0)
         else:
             ebb_motion.sendPenUp(ad_ref.plot_status.port, v_time, servo_pin, False)
             if (v_time > 50) and (ad_ref.options.mode not in\
@@ -258,6 +289,25 @@ class PenHandler:
 
         if ad_ref.options.preview:
             ad_ref.preview.v_chart.rest(ad_ref, v_time)
+        elif serial_utils.is_grbl(ad_ref.plot_status):
+            pen_down_cmd = self._with_grbl_feed_override(
+                ad_ref.params.grbl_pen_down_cmd,
+                getattr(ad_ref.params, "grbl_pen_down_slow_feed", 0.0))
+            result = serial_utils.grbl_send_result(
+                ad_ref.plot_status,
+                pen_down_cmd,
+                expect_ok=True,
+                timeout_s=max(1.0, float(ad_ref.options.grbl_command_timeout)))
+            if not result["ok"]:
+                ad_ref.plot_status.stopped = 104
+                ad_ref.user_message_fun(
+                    f"Grbl pen-down command failed ({result['kind']}); plotting stopped.")
+                return
+            settle_ms = int(getattr(ad_ref.params, "grbl_pen_down_settle_ms", 0) or 0)
+            if settle_ms > 0 and (ad_ref.options.mode not in ["manual", "align", "cycle"]):
+                time.sleep(float(settle_ms) / 1000.0)
+            if (v_time > 50) and (ad_ref.options.mode not in ["manual", "align", "cycle"]):
+                time.sleep(float(v_time - 30) / 1000.0)
         else:
             ebb_motion.sendPenDown(ad_ref.plot_status.port, v_time, servo_pin, False)
             if (v_time > 50) and (ad_ref.options.mode not in\
@@ -273,7 +323,10 @@ class PenHandler:
         Call only after servo_init(), which lowers the pen when initializing.
         This function should only be used as a setup utility.
         '''
-        ebb_motion.doTimedPause(ad_ref.plot_status.port, 500)
+        if serial_utils.is_grbl(ad_ref.plot_status):
+            time.sleep(0.5)
+        else:
+            ebb_motion.doTimedPause(ad_ref.plot_status.port, 500)
         self.pen_raise(ad_ref)
 
     def set_temp_height(self, ad_ref, temp_height):
@@ -310,6 +363,15 @@ class PenHandler:
                         self.heights.pen_pos_down, self.heights.narrow_band]
 
         if self.phys.z_up is not None: # Pen status _has_ already been set in software.
+            return layer_code, config
+
+        if serial_utils.is_grbl(ad_ref.plot_status):
+            # Grbl does not expose EBBLV/QueryPenUp equivalents; trust software state.
+            if (ad_ref.options.mode =="manual" and ad_ref.options.manual_cmd =="lower_pen") or\
+                    ad_ref.options.mode =="cycle":
+                self.phys.z_up = False
+            else:
+                self.phys.z_up = True
             return layer_code, config
 
         ebblv = ebb_motion.queryEBBLV(ad_ref.plot_status.port, False)
@@ -398,6 +460,26 @@ class PenHandler:
         if ad_ref.options.preview:
             self.phys.z_up = True
         if ad_ref.options.preview or ad_ref.plot_status.port is None:
+            return
+
+        if serial_utils.is_grbl(ad_ref.plot_status):
+            layer_code, new_config = self.find_pen_state(ad_ref)
+            self.status.config = new_config
+            timeout_s = max(1.0, float(ad_ref.options.grbl_command_timeout))
+            ok_init, failed_cmd, result = serial_utils.grbl_initialize_motion(
+                ad_ref.plot_status,
+                timeout_s=timeout_s,
+                zero_z=True)
+            if not ok_init:
+                ad_ref.plot_status.stopped = 104
+                ad_ref.user_message_fun(
+                    f"Grbl setup command {failed_cmd} failed ({result['kind']}); plotting stopped.")
+                return
+            if ad_ref.options.mode in ("toggle", "cycle") or\
+                (ad_ref.options.mode == "manual" and ad_ref.options.manual_cmd == "lower_pen"):
+                self.pen_lower(ad_ref)
+            else:
+                self.pen_raise(ad_ref)
             return
 
         layer_code, new_config = self.find_pen_state(ad_ref)

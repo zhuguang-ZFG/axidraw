@@ -154,7 +154,7 @@ def axidraw_CLI(dev = False):
             metavar='COMMAND', type=str, \
             help="Manual command. One of: [fw_version, lower_pen, raise_pen, "\
             + "walk_x, walk_y, walk_mmx, walk_mmy, walk_home, enable_xy, disable_xy, "\
-            + "res_read, res_adj_in, res_adj_mm, bootload, strip_data, read_name, "\
+            + "axis_read, axis_apply, res_read, res_adj_in, res_adj_mm, bootload, strip_data, read_name, "\
             + "list_names,  write_name]. Default: fw_version")
 
     parser.add_argument("-w","--dist","--walk_dist", \
@@ -224,6 +224,59 @@ def axidraw_CLI(dev = False):
             + " 1: Plot to first AxiDraw Found."\
             + " 2: Plot to specified AxiDraw."\
             + " 3: Plot to all AxiDraw units.")
+
+    parser.add_argument("--controller",
+            metavar='BACKEND', type=str,
+            help="Controller backend: ebb (default) or grbl_esp32.")
+
+    parser.add_argument("--grbl_baud_rate",
+            metavar='BAUD', type=int,
+            help="Serial baud rate for Grbl backend. Default: 115200.")
+
+    parser.add_argument("--grbl_auto_fetch",
+            action="store_const", const='True',
+            help="Auto-read Grbl '$$' settings after connect.")
+
+    parser.add_argument("--grbl_command_timeout",
+            metavar='SECONDS', type=float,
+            help="Grbl command timeout in seconds.")
+    parser.add_argument("--grbl_axis_swap_xy",
+            action="store_const", const='True',
+            help="Software transform: swap X/Y before sending Grbl moves.")
+    parser.add_argument("--grbl_axis_invert_x",
+            action="store_const", const='True',
+            help="Software transform: invert X sign before sending Grbl moves.")
+    parser.add_argument("--grbl_axis_invert_y",
+            action="store_const", const='True',
+            help="Software transform: invert Y sign before sending Grbl moves.")
+    parser.add_argument("--grbl_set_dir_mask",
+            metavar='MASK', type=int,
+            help="In axis_apply mode, write this bitmask to Grbl $3.")
+    parser.add_argument("--grbl_set_homing_dir_mask",
+            metavar='MASK', type=int,
+            help="In axis_apply mode, write this bitmask to Grbl $23.")
+    parser.add_argument("--grbl_dir_invert_x",
+            action="store_const", const='True',
+            help="In axis_apply mode, include X bit in $3 mask.")
+    parser.add_argument("--grbl_dir_invert_y",
+            action="store_const", const='True',
+            help="In axis_apply mode, include Y bit in $3 mask.")
+    parser.add_argument("--grbl_dir_invert_z",
+            action="store_const", const='True',
+            help="In axis_apply mode, include Z bit in $3 mask.")
+    parser.add_argument("--grbl_home_invert_x",
+            action="store_const", const='True',
+            help="In axis_apply mode, include X bit in $23 mask.")
+    parser.add_argument("--grbl_home_invert_y",
+            action="store_const", const='True',
+            help="In axis_apply mode, include Y bit in $23 mask.")
+    parser.add_argument("--grbl_home_invert_z",
+            action="store_const", const='True',
+            help="In axis_apply mode, include Z bit in $23 mask.")
+
+    parser.add_argument("--language",
+            metavar='LANG', type=str,
+            help="Language override: auto/en/zh_CN.")
 
     parser.add_argument("-o","--output_file",\
             metavar='FILE', \

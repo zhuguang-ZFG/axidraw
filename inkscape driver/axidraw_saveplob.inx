@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-<name>AxiDraw Plot Digest (Plob) Export</name>
+<name>DynamicNest 预处理导出</name>
 <id>command.evilmadscientist.axidraw-plob-output</id>
 <dependency type="extension">org.inkscape.output.svg.inkscape</dependency>
 <dependency type="executable" location="extensions">axidraw_control.py</dependency>
@@ -8,76 +8,71 @@
 <param name="digest" type="int" gui-hidden="true">2</param>
 
 <param name="submode" type="notebook">
-<page name="Plot Digest Settings" gui-text="Plot Digest Options">
+<page name="Plot Digest Settings" gui-text="预处理选项">
 
-<param name="model" type="optiongroup" appearance="combo" indent="1" gui-text="AxiDraw model:">
-<option value="1">AxiDraw V2, V3, or SE/A4</option>
-<option value="2">AxiDraw V3/A3 or SE/A3</option>
-<option value="7">AxiDraw V3/B6</option>
-<option value="4">AxiDraw MiniKit</option>
-<option value="5">AxiDraw SE/A1</option>
-<option value="6">AxiDraw SE/A2</option>
-<option value="3">AxiDraw V3 XLX</option>
+<param name="model" type="optiongroup" appearance="combo" indent="1" gui-text="设备机型：">
+<option value="1">标准机型（推荐）</option>
+<option value="2">大幅机型（A3）</option>
+<option value="7">小幅机型（B6）</option>
+<option value="4">Mini 机型</option>
+<option value="5">超大机型（A1）</option>
+<option value="6">大机型（A2）</option>
+<option value="3">XL 扩展机型</option>
 </param>
 
 <spacer />
 
-<param indent="1" name="mode" type="optiongroup" appearance="combo" gui-text="Layer handling:">
-<option value="plot">Include all layers</option>
-<option value="layers">Only specific layer(s)...</option>
+<param indent="1" name="mode" type="optiongroup" appearance="combo" gui-text="图层处理：">
+<option value="plot">包含所有图层</option>
+<option value="layers">仅包含指定图层...</option>
 </param>
 <param indent="5" name="layer" type="int" min="0" max="1000"
-gui-text="Specific layer selection:">1</param>
+gui-text="指定图层编号：">1</param>
 
 <spacer />
 
-<param indent="1" name="reordering" type="optiongroup" appearance="combo" gui-text="Plot optimization:">
-<option value="0">Least; Only connect adjoining paths</option>
-<option value="1">Basic; Also reorder paths for speed</option>
-<option value="2">Full; Also allow path reversal</option>
-<option value="4">None; Strictly preserve file order</option>
+<param indent="1" name="reordering" type="optiongroup" appearance="combo" gui-text="绘图优化：">
+<option value="0">最低；仅连接相邻路径</option>
+<option value="1">基础；并重排路径提升速度</option>
+<option value="2">完整；并允许路径反向</option>
+<option value="4">无；严格保持文件顺序</option>
 </param>
-<param indent="5" name="auto_rotate" type="bool" gui-text="Auto-rotate page when printing">true</param>	
-<param indent="5" name="random_start" type="bool" gui-text="Randomize starts of closed paths">false</param>
-<param indent="5" name="hiding" type="bool" gui-text="Hidden-line removal">false</param>
+<param indent="5" name="auto_rotate" type="bool" gui-text="绘图时自动旋转页面">true</param>	
+<param indent="5" name="random_start" type="bool" gui-text="闭合路径起点随机化">false</param>
+<param indent="5" name="hiding" type="bool" gui-text="隐藏线去除">false</param>
 
 <spacer />
 <spacer />
-<label indent="6">Version 3.9.4. Copyright 2023 Evil Mad Scientist</label>
+<label indent="6">版本 3.9.4。版权所有 2023 Evil Mad Scientist</label>
 
 </page>
 
-<page name="help" gui-text="About">
+<page name="help" gui-text="关于">
 <label indent="1">
-The Plot Digest Object or "Plob" format is a limited subset of SVG,
-stripped of style information and prepared for use by AxiDraw.
+Plot Digest（简称 “Plob”）是 SVG 的一个精简子集，
+会去除样式信息并转换为适合 DynamicNest Technology 设备使用的格式。
 </label>
 <label indent="1">
-Generating the Plob is destructive. Always save as a separate
-copy and keep your original, editable document intact.
+生成 Plob 属于破坏性处理。请务必另存为副本，
+并保留原始可编辑文档。
 </label>
 <spacer />
 <label indent="1">
-The AxiDraw software pre-processes documents into Plob format as part
-of the printing process. This process strips out layers and objects
-that won't be printed as well as all styles. It reduces the document
-to a simplified plot-ready format, clipping to the plot area, and
-applying any optimizations.
+DynamicNest Technology 控制软件在绘图前会先把文档预处理为 Plob 格式。
+该过程会移除不参与绘图的图层/对象及全部样式信息，
+并将文档裁剪到绘图区，同时应用优化。
 </label>
 <label indent="1">
-A Plob document prepared for a specific AxiDraw model,
-if not further edited, can be printed on that same AxiDraw model,
-by the same AxiDraw software version, without further processing.
-This can potentially save a large
-amount of time when repeatedly starting or resuming a plot.
+针对特定设备机型生成的 Plob 文档，在不再编辑的情况下，
+可由相同版本的 DynamicNest Technology 控制软件直接绘图，无需再次预处理。
+这在频繁启动或续跑时可节省大量时间。
 </label>
 
 <spacer />
 
 <label indent="1">
-Exporting a Plob may be helpful in certain situations, for example when
-working with extremely large files, in order to
-separate the processing and motion-control stages of plotting.
+导出 Plob 在某些场景很有帮助，例如处理超大文件时，
+可将“预处理阶段”与“运动控制阶段”分离。
 </label>
 </page>
 
@@ -86,8 +81,8 @@ separate the processing and motion-control stages of plotting.
 <output>
         <extension>.svg</extension>
         <mimetype>image/svg+xml</mimetype>
-        <filetypename>AxiDraw "Plob" Plot Digest (*.svg)</filetypename>
-        <filetypetooltip>Plob file for AxiDraw</filetypetooltip>
+        <filetypename>DynamicNest Technology “Plob” 绘图摘要 (*.svg)</filetypename>
+        <filetypetooltip>DynamicNest Technology 使用的 Plob 文件</filetypetooltip>
         <savecopyonly>true</savecopyonly>
 </output>
 

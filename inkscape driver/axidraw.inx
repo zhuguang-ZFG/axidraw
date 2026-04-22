@@ -1,475 +1,247 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-<name>AxiDraw Control</name>
-<id>command.evilmadscientist.axidraw-manager</id>
-<dependency type="extension">org.inkscape.output.svg.inkscape</dependency>
-<dependency type="executable" location="extensions">axidraw_control.py</dependency>
-<param name="mode" type="notebook">
-
-<page name="plot" gui-text="Plot">
-<label indent="0" appearance="header">AxiDraw Control</label>
-
-<hbox >
-<image width="30" height="1">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<vbox >
-<label  xml:space="preserve">Press "Apply" to begin plotting. Use other tabs to adjust
-settings and access additional AxiDraw functions.</label>
-<spacer />
-<label xml:space="preserve">AxiDraw documentation is online at: axidraw.com/docs . For technical
-support, email  contact@evilmadscientist.com  or visit axidraw.com/chat
-</label>
-</vbox>
-</hbox>
-
-
-
-
-<image width="10" height="5">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<image>axidraw_deps/axidrawinternal/inx_img/ad_hr.svg</image>
-<image width="10" height="5">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-
-
-
-<hbox indent="0">
-<image width="10" height="10">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-
-<vbox indent="3">
-<label appearance="header">Copies:</label>
-<image width="10" height="33">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-
-</vbox>
-<vbox indent="4">
-<param name="copies" type="int" min="0" max="9999"  gui-text="Copies to Plot:">1</param>	
-<param name="page_delay" type="int" min="0" max="3600" gui-text="Page Delay (s):">15</param>	
-
-</vbox>
-<image width="10" height="10">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-
-</hbox>
-<image width="10" height="3">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<label indent="13">Tip: Select 0 copies to plot continuously.</label>
-
-
-
-
-
-<image width="10" height="5">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<image>axidraw_deps/axidrawinternal/inx_img/ad_hr.svg</image>
-<image width="10" height="5">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-
-<label indent="6"
->Version 3.9.7      —      Copyright 2024 Evil Mad Science LLC</label>
-
-
-
-
-
-</page>
-
-
-<page name='setup' gui-text='Setup'>
-
-<label appearance="header">Basic Setup</label>
-
-<hbox >
-<image width="30" height="1">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<vbox >
-<param name="pen_pos_up" type="int" min="0" max="100" appearance="full" 
-gui-text="Pen height: UP (%):">60</param>
-<param name="pen_pos_down" type="int" min="0" max="100" appearance="full"
-gui-text="Pen height: DOWN, (%):">30</param>
-</vbox>
-<image width="10" height="1">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-</hbox>
-
-<spacer />
-
-<hbox>
-<vbox indent="8">
-<param name="setup_type" type="optiongroup"
-appearance="radio" gui-text='Action on "Apply": '>
-<option value="cycle">Cycle pen down then up</option>
-<option value="align">Raise pen, turn off motors</option>
-<option value="toggle">Toggle pen between up, down</option>
-</param>
-</vbox>
-</hbox>
-
-
-<spacer />
-<label indent="3">
-- Cycle pen down then up to check the vertical positions of the pen.
-</label>
-<label indent="3">
-- Raise pen and turn off stepper motors to manually move carriage to the Home Corner (back left).
-</label>
-</page>
-
-<page name='options' gui-text='Options'>
-<param name="submode" type="notebook">
-
-<page name='Speed' gui-text='Speed'>
-<label appearance="header">Movement speeds:</label>
-
-
-<hbox >
-<image width="80" height="10">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<vbox >
-
-<param name="speed_pendown" type="int" min="1" max="110" 
-gui-text="Writing/Drawing speed (%):   ">25</param>	
-<param name="speed_penup" type="int" min="1" max="110" 
-gui-text="Pen-up movement speed (%):   ">75</param>
-
-<param name="accel" type="optiongroup" appearance="combo" gui-text="Acceleration :">
-<option value="50">Standard</option>
-<option value="100">Maximum</option>
-<option value="75">High</option>
-<option value="35">Slow</option>
-<option value="10">Very slow</option>
-</param>
-<spacer />
-<param name="const_speed" type="bool" gui-text="Use constant speed when pen is down">false</param>	
-
-</vbox>
-<image width="10" height="10">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-</hbox>
-
-</page>
-<page name='pen_timing' gui-text='Pen timing'>
-
-<label appearance="header">Pen raising and lowering rates:</label>
-
-
-
-<hbox >
-<image width="70" height="10">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<vbox >
-
-<param name="pen_rate_raise" type="optiongroup" appearance="combo" gui-text="Pen raising speed :">
-<option value="100">Maximum</option>
-<option value="50">Standard</option>
-<option value="25">Slow</option>
-<option value="12">Very slow</option>
-<option value="6">Dead slow</option>
-</param>
-
-<param name="pen_rate_lower" type="optiongroup" appearance="combo" gui-text="Pen lowering speed :">
-<option value="50">Standard</option>
-<option value="100">Maximum</option>
-<option value="25">Slow</option>
-<option value="12">Very slow</option>
-<option value="6">Dead slow</option>
-</param>
-<spacer />
-<param name="pen_delay_up" type="int" min="-500" max="500" gui-text="Optional delay after raising pen (ms):">0</param>
-<param name="pen_delay_down" type="int" min="-500" max="500" gui-text="Optional delay after lowering pen (ms):">0</param>
-</vbox>
-<image width="10" height="10">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-</hbox>
-
-</page>
-
-
-<page name='preview' gui-text='Notifications'>
-
-<label appearance="header">Rendering and reporting:</label>
-
-
-<hbox >
-<image width="50" height="10">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<vbox >
-<param name="report_time" type="bool" gui-text="Report time elapsed">false</param> 
-
-<param name="rendering" type="optiongroup" appearance="combo" gui-text="Preview mode rendering:">
-<option value="3">All movement</option>
-<option value="1">Pen-down movement</option>
-<option value="2">Pen-up movement</option>
-<option value="0">None</option>
-</param>
-</vbox>
-<image width="10" height="1">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-</hbox>
-
-<spacer />
-
-<label appearance="header">Webhook notifications:</label>
-
-
-
-<hbox >
-<image width="50" height="10">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<vbox >
-<param name="webhook" type="bool" gui-text="Post to webhook when a plot finishes">false</param> 
-</vbox>
-</hbox>
-<param name="webhook_url" indent="4" type="string" gui-text="Webhook URL: "></param>
-
-
-</page>
-
-
-<page name='advanced' gui-text='Advanced'>
-<label appearance="header">Advanced Options:</label>
-
-<hbox >
-<image width="50" height="10">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<vbox >
-<param name="auto_rotate" type="bool" gui-text="Auto-rotate page when printing">true</param>	
-<param name="random_start" type="bool" gui-text="Randomize starts of closed paths">false</param>
-<param name="hiding" type="bool" gui-text="Hidden-line removal">false</param>
-
-
-<image width="10" height="5">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-
-<param name="reordering" type="optiongroup" appearance="combo" gui-text="Plot optimization:">
-<option value="0">Least; Only connect adjoining paths</option>
-<option value="1">Basic; Also reorder paths for speed</option>
-<option value="2">Full; Also allow path reversal</option>
-<option value="4">None; Strictly preserve file order</option>
-</param>
-
-<param name="resolution" type="optiongroup" appearance="combo" gui-text="Motor Resolution:">
-<option value="1">~2870 DPI (Slightly smoother)</option>
-<option value="2">~1435 DPI (Slightly faster)</option>
-</param></vbox>
-<image width="10" height="10">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-</hbox>
-<image width="10" height="5">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-
-<label indent="3" xml:space="preserve">Tip: Hidden-line removal can be slow. It also ignores path</label>
-<label indent="3" xml:space="preserve">        orientation, so full optimization is recommended.</label>
-
-</page>
-
-<page name="sysinfo" gui-text="Config">
-
-<label appearance="header">Hardware configuration</label>
-
-<hbox >
-<image width="60" height="10">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<vbox >
-<param name="model" type="optiongroup" appearance="combo" gui-text="AxiDraw model:">
-<option value="1">AxiDraw V2, V3, or SE/A4</option>
-<option value="2">AxiDraw V3/A3 or SE/A3</option>
-<option value="7">AxiDraw V3/B6</option>
-<option value="4">AxiDraw MiniKit</option>
-<option value="5">AxiDraw SE/A1</option>
-<option value="6">AxiDraw SE/A2</option>
-<option value="3">AxiDraw V3 XLX</option>
-</param>
-
-<param name="penlift" type="optiongroup" appearance="combo" gui-text="Pen-lift servo:">
-<option value="1">Default</option>
-<option value="2">Standard (lowest position)</option>
-<option value="3">Brushless (3rd position)</option>
-</param>
-
-<param name="port_config" type="optiongroup" appearance="combo" gui-text="Machine selection:">
-<option value="1">Use First AxiDraw located</option>
-<option value="2">Use AxiDraw named below</option>
-<option value="3">Plot to all AxiDraw units</option>
-</param>
-
-<param name="port" type="string" gui-text="AxiDraw name or port: "></param>
-
-</vbox>
-</hbox>
-<image width="50" height="2">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-
-<label appearance="header" indent="2">
-Press "Apply" with this tab selected to check online for updates.</label>
-
-
-
-</page></param></page>
-
-<page name="manual" gui-text="Manual">
-<label appearance="header">Manual Control</label>
-
-<hbox >
-<image width="30" height="1">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<vbox >
-<label>
-Press "Apply" with this tab selected to execute various "manual"
-AxiDraw commands. For example, you can walk (move) the carriage,
-raise or lower the pen, enable or disable the motors, or adjust
-the position where a paused plot will be resumed.
-</label>
-</vbox>
-<image width="10" height="1">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-</hbox>
-
-<spacer />
-
-<hbox >
-<image width="80" height="10">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<vbox >
-<param name="manual_cmd" type="optiongroup" appearance="combo"
-gui-text="Command: ">
-<option value="none"       >- Select -</option>
-<option value="walk_x"     >Walk Carriage (X, inches)</option>
-<option value="walk_y"     >Walk Carriage (Y, inches)</option>
-<option value="walk_mmx"   >Walk Carriage (X, mm)</option>
-<option value="walk_mmy"   >Walk Carriage (Y, mm)</option>
-<option value="walk_home"  >Walk Home</option>
-<option value="raise_pen"  >Raise the Pen</option>
-<option value="lower_pen"  >Lower the Pen</option>
-<option value="enable_xy"  >Enable XY Motors</option>
-<option value="disable_xy" >Disable XY Motors</option>
-<option value="bootload"   >Enter Bootloader mode</option>
-<option value="strip_data" >Strip plotter data from file</option>
-</param>
-<param name="dist" indent="1" type="float" precision="3" min="-100000" max="100000"
-    gui-text="Walk distance:">1.000</param>
-</vbox>
-<image width="10" height="10">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-</hbox>
-
-<spacer />
-
-
-<hbox >
-<image width="30" height="1">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<vbox >
-<label>
-Caution: The manual "walk" commands will move the carriage as
-requested, without regard to the current position. Moving too
-far or in the wrong direction may cause AxiDraw to try and
-move beyond its physical limits of travel.
-</label>
-</vbox>
-<image width="10" height="1">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-</hbox>
-
-
-</page>
-
-
-
-
-
-
-
-
-<page name="layers" gui-text="Layers">
-<label appearance="header">Plot Individual Layers </label>
-
-<hbox >
-<image width="30" height="1">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<vbox >
-
-<label>
-Normally, all paths, from all visible layers will be plotted.
-</label><label>
-You can also choose to plot a single layer or group of layers,
-for example to plot only a single color of ink.
-</label>
-<spacer />
-<label>
-Press "Apply" with this tab selected to plot only the visible
-layers whose names begin with the selected number, which can
-be in the range 0 to 1000.
-</label><label>
-For example, a layer named "5-red" will be plotted if the
-number 5 is selected, but layers named "guide lines", "55",
-or "2-black" will be skipped.
-</label>
-
-</vbox>
-<image width="10" height="1">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-</hbox>
-
-
-
-
-
-<spacer />
-<hbox>
-<vbox indent="7">
-<param name="layer" type="int" min="0" max="1000"
-gui-text="Plot only layers beginning with: ">1</param>
-</vbox>
-</hbox>
-<spacer />
-
-
-<hbox >
-<image width="30" height="1">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<vbox >
-<label>
-Tip: Number of copies to plot and the time delay between them
-are given by parameters in the "Plot" tab.
-</label>
-</vbox>
-<image width="10" height="1">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-</hbox>
-
-
-
-</page>
-
-
-<page name="resume" gui-text="Resume">
-
-<label appearance="header">Pause and Resume</label>
-
-<hbox >
-<image width="30" height="1">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-<vbox >
-<label> 
-To pause a plot in progress, press the pause button on the
-left side of the AxiDraw. After pausing, you can change
-settings or perform any manual adjustments that are needed.
-</label>
-<label>
-To resume plotting, or to simply cancel and return the
-carriage to the Home Corner, press "Apply" with this tab
-selected.
-</label>
-<spacer />
-<label>
-Plot progress is stored in the SVG file itself. If you plan
-to quit Inkscape and resume later, save the document first.
-</label>
-<label>
-You can resume directly where you paused, or after using
-the Return to Home Corner command.
-</label>
-</vbox>
-<image width="10" height="1">axidraw_deps/axidrawinternal/inx_img/spacer_10px.svg</image>
-</hbox>
-
-
-
-<spacer />
-
-<hbox>
-<vbox indent="3">
-<param name="resume_type" type="optiongroup" appearance="radio"
-indent="2" gui-text='Action on "Apply": '>
-
-<option value="ResumeNow" >Resume (From Home or where paused)</option>
-<option value="home">Return to Home Corner (only)</option>
-</param>
-</vbox>
-</hbox>
-
-
-</page>
-</param>
-
-<param name="preview" type="bool" indent="4" 
-    gui-text="Preview mode (Simulate plotting only)">false</param>
-
-<effect needs-live-preview="false">
-<object-type>all</object-type>
-<effects-menu>
-</effects-menu>
-</effect>
-
-<script>
-<command location="extensions" interpreter="python">axidraw_control.py</command>
-</script>
-
+  <name>DynamicNest 高级控制</name>
+  <id>command.evilmadscientist.axidraw-manager</id>
+  <dependency type="extension">org.inkscape.output.svg.inkscape</dependency>
+  <dependency type="executable" location="extensions">axidraw_control.py</dependency>
+
+  <param name="mode" type="notebook">
+
+    <page name="plot" gui-text="绘图">
+      <label appearance="header">绘图任务</label>
+      <label xml:space="preserve">默认按所有可见图层顺序绘制。超出机器行程时，默认会先自动缩放整图适配，再保留越界裁切作为最后保护。</label>
+      <spacer />
+      <param name="copies" type="int" min="0" max="9999" gui-text="绘图份数：">1</param>
+      <param name="page_delay" type="int" min="0" max="3600" gui-text="每份间隔（秒）：">15</param>
+      <param name="preview" type="bool" gui-text="仅预览，不发送串口">false</param>
+      <param name="report_time" type="bool" gui-text="完成后报告耗时">false</param>
+      <param name="rendering" type="optiongroup" appearance="combo" gui-text="预览显示：">
+        <option value="3">全部运动</option>
+        <option value="1">仅落笔轨迹</option>
+        <option value="2">仅抬笔轨迹</option>
+        <option value="0">不显示</option>
+      </param>
+      <spacer />
+      <param name="auto_pause_between_layers" type="bool" gui-text="图层间自动暂停">true</param>
+      <param name="manual_pen_change" type="bool" gui-text="暂停时进入手动换笔流程">true</param>
+      <param name="pen_change_to_home" type="bool" gui-text="换笔时先回原点">true</param>
+      <spacer />
+      <label>提示：份数设为 0 表示连续绘图。</label>
+    </page>
+
+    <page name="manual" gui-text="手动控制">
+      <label appearance="header">手动控制</label>
+      <label xml:space="preserve">选择一个动作后点击“应用”。本面板仅保留绘图机/Grbl 相关功能，不再显示 EBB 旧功能。</label>
+      <spacer />
+      <param name="manual_cmd" type="optiongroup" appearance="radio" gui-text="动作：">
+        <option value="fw_version">读取固件版本</option>
+        <option value="status_refresh">读取当前位置/状态</option>
+        <option value="ports_scan">扫描串口列表</option>
+        <option value="axis_read">读取坐标轴设置</option>
+        <option value="walk_mmy_pos">Y+ 点动</option>
+        <option value="walk_mmy_neg">Y- 点动</option>
+        <option value="walk_mmx_neg">X- 点动</option>
+        <option value="walk_mmx_pos">X+ 点动</option>
+        <option value="walk_home">回工作原点</option>
+        <option value="home_cycle">机械归位（$H）</option>
+        <option value="raise_pen">Z 抬笔</option>
+        <option value="lower_pen">Z 落笔</option>
+        <option value="enable_xy">解锁/使能电机（$X）</option>
+        <option value="disable_xy">失能电机</option>
+        <option value="strip_data">清除 SVG 恢复数据</option>
+        <option value="none">不执行</option>
+      </param>
+      <param name="dist" type="float" precision="3" min="0.001" max="100000" gui-text="点动距离（mm）：">1.000</param>
+    </page>
+
+    <page name="options" gui-text="基础参数">
+      <label appearance="header">基础参数</label>
+      <param name="speed_pendown" type="int" min="1" max="110" gui-text="落笔速度：">25</param>
+      <param name="speed_penup" type="int" min="1" max="110" gui-text="抬笔速度：">75</param>
+      <param name="accel" type="optiongroup" appearance="combo" gui-text="加速度：">
+        <option value="50">标准</option>
+        <option value="100">最大</option>
+        <option value="75">较高</option>
+        <option value="35">较慢</option>
+        <option value="10">很慢</option>
+      </param>
+      <param name="const_speed" type="bool" gui-text="落笔时恒速">false</param>
+      <spacer />
+      <param name="pen_pos_up" type="int" min="0" max="100" gui-text="抬笔高度：">60</param>
+      <param name="pen_pos_down" type="int" min="0" max="100" gui-text="落笔高度：">30</param>
+      <param name="pen_rate_raise" type="int" min="1" max="200" gui-text="抬笔速度：">75</param>
+      <param name="pen_rate_lower" type="int" min="1" max="200" gui-text="落笔速度：">50</param>
+      <param name="pen_delay_up" type="int" min="-500" max="500" gui-text="抬笔附加延时（ms）：">0</param>
+      <param name="pen_delay_down" type="int" min="-500" max="500" gui-text="落笔附加延时（ms）：">0</param>
+    </page>
+
+    <page name="advanced" gui-text="高级设置">
+      <label appearance="header">高级设置</label>
+      <param name="auto_rotate" type="bool" gui-text="自动旋转页面">false</param>
+      <param name="reordering" type="optiongroup" appearance="combo" gui-text="路径优化级别：">
+        <option value="0">低，仅连接相邻路径</option>
+        <option value="1">中，重排路径</option>
+        <option value="2">高，允许反向重排</option>
+        <option value="4">关闭，严格保持原顺序</option>
+      </param>
+      <param name="random_start" type="bool" gui-text="闭合路径起点随机化">false</param>
+      <param name="resolution" type="optiongroup" appearance="combo" gui-text="电机分辨率：">
+        <option value="1">高分辨率，更平滑</option>
+        <option value="2">低分辨率，更快</option>
+      </param>
+      <param name="model" type="optiongroup" appearance="combo" gui-text="行程模型：">
+        <option value="1">默认 300 x 218 mm</option>
+        <option value="2">430 x 297 mm</option>
+        <option value="3">595 x 218 mm</option>
+        <option value="4">160 x 101.6 mm</option>
+        <option value="5">864 x 594 mm</option>
+        <option value="6">594 x 432 mm</option>
+        <option value="7">190 x 140 mm</option>
+      </param>
+      <spacer />
+      <param name="bounds_auto_scale" type="bool" gui-text="越界时先自动缩放整图">true</param>
+      <param name="bounds_auto_scale_prompt" type="bool" gui-text="自动缩放前询问">false</param>
+      <param name="auto_sparse_linework" type="bool" gui-text="自动降级密排线稿">true</param>
+      <param name="auto_sparse_line_mode" type="optiongroup" appearance="combo" gui-text="降级强度：">
+        <option value="conservative">保守</option>
+        <option value="standard">标准</option>
+        <option value="aggressive">激进</option>
+        <option value="off">关闭</option>
+      </param>
+      <param name="hiding" type="bool" gui-text="隐藏线去除">false</param>
+      <label>说明：当前默认是先缩放适配机器行程，再对密排线稿做自动降级，最后保留越界裁切保护。</label>
+      <spacer />
+      <label appearance="header">坐标映射</label>
+      <param name="grbl_axis_invert_x" type="bool" gui-text="反转 X 轴">true</param>
+      <param name="grbl_axis_invert_y" type="bool" gui-text="反转 Y 轴">false</param>
+      <param name="grbl_axis_swap_xy" type="bool" gui-text="对调 X/Y">true</param>
+      <spacer />
+      <label appearance="header">Grbl 命令</label>
+      <param name="grbl_pen_up_cmd" type="string" gui-text="抬笔命令：">G1 Z0 F3000</param>
+      <param name="grbl_pen_down_cmd" type="string" gui-text="落笔命令：">G1 Z5 F3000</param>
+      <param name="grbl_disable_motors_cmd" type="string" gui-text="失能电机命令：">M18</param>
+    </page>
+
+    <page name="resume" gui-text="继续/回零">
+      <label appearance="header">继续绘图与回零</label>
+      <param name="resume_type" type="optiongroup" appearance="radio" gui-text="恢复方式：">
+        <option value="plot">继续绘图</option>
+        <option value="home">仅回原点</option>
+      </param>
+      <label xml:space="preserve">继续绘图会读取 SVG 中保存的恢复信息。若只是想让机器回到工作原点，请选择“仅回原点”。</label>
+    </page>
+
+    <page name="sysinfo" gui-text="系统信息">
+      <label appearance="header">系统信息</label>
+      <label xml:space="preserve">点击“应用”后读取当前插件版本和已连接控制器信息。</label>
+    </page>
+  </param>
+
+  <separator />
+  <label appearance="header">公共设备设置</label>
+  <label>所有标签页共用以下串口和控制器参数。</label>
+  <param name="port_choice" type="optiongroup" appearance="combo" gui-text="串口下拉（可选）：">
+    <option value="auto">自动（推荐）</option>
+    <option value="COM1">COM1</option>
+    <option value="COM2">COM2</option>
+    <option value="COM3">COM3</option>
+    <option value="COM4">COM4</option>
+    <option value="COM5">COM5</option>
+    <option value="COM6">COM6</option>
+    <option value="COM7">COM7</option>
+    <option value="COM8">COM8</option>
+    <option value="COM9">COM9</option>
+    <option value="COM10">COM10</option>
+    <option value="COM11">COM11</option>
+    <option value="COM12">COM12</option>
+    <option value="COM13">COM13</option>
+    <option value="COM14">COM14</option>
+    <option value="COM15">COM15</option>
+    <option value="COM16">COM16</option>
+    <option value="COM17">COM17</option>
+    <option value="COM18">COM18</option>
+    <option value="COM19">COM19</option>
+    <option value="COM20">COM20</option>
+    <option value="COM21">COM21</option>
+    <option value="COM22">COM22</option>
+    <option value="COM23">COM23</option>
+    <option value="COM24">COM24</option>
+    <option value="COM25">COM25</option>
+    <option value="COM26">COM26</option>
+    <option value="COM27">COM27</option>
+    <option value="COM28">COM28</option>
+    <option value="COM29">COM29</option>
+    <option value="COM30">COM30</option>
+    <option value="COM31">COM31</option>
+    <option value="COM32">COM32</option>
+    <option value="COM33">COM33</option>
+    <option value="COM34">COM34</option>
+    <option value="COM35">COM35</option>
+    <option value="COM36">COM36</option>
+    <option value="COM37">COM37</option>
+    <option value="COM38">COM38</option>
+    <option value="COM39">COM39</option>
+    <option value="COM40">COM40</option>
+    <option value="COM41">COM41</option>
+    <option value="COM42">COM42</option>
+    <option value="COM43">COM43</option>
+    <option value="COM44">COM44</option>
+    <option value="COM45">COM45</option>
+    <option value="COM46">COM46</option>
+    <option value="COM47">COM47</option>
+    <option value="COM48">COM48</option>
+    <option value="COM49">COM49</option>
+    <option value="COM50">COM50</option>
+    <option value="COM51">COM51</option>
+    <option value="COM52">COM52</option>
+    <option value="COM53">COM53</option>
+    <option value="COM54">COM54</option>
+    <option value="COM55">COM55</option>
+    <option value="COM56">COM56</option>
+    <option value="COM57">COM57</option>
+    <option value="COM58">COM58</option>
+    <option value="COM59">COM59</option>
+    <option value="COM60">COM60</option>
+    <option value="COM61">COM61</option>
+    <option value="COM62">COM62</option>
+    <option value="COM63">COM63</option>
+    <option value="COM64">COM64</option>
+  </param>
+  <param name="port" type="string" gui-text="手填串口（留空自动）："></param>
+
+  <param name="controller" type="string" gui-hidden="true">grbl_esp32</param>
+  <param name="port_config" type="int" gui-hidden="true">0</param>
+  <param name="grbl_baud_rate" type="string" gui-hidden="true">115200</param>
+  <param name="grbl_auto_fetch" type="bool" gui-hidden="true">true</param>
+  <param name="grbl_command_timeout" type="float" gui-hidden="true">2.0</param>
+  <param name="pen_change_prompt" type="bool" gui-hidden="true">true</param>
+  <param name="grbl_pen_down_slow_feed" type="float" gui-hidden="true">600.0</param>
+  <param name="grbl_pen_down_settle_ms" type="int" gui-hidden="true">180</param>
+  <param name="grbl_set_dir_mask" type="int" gui-hidden="true">-1</param>
+  <param name="grbl_set_homing_dir_mask" type="int" gui-hidden="true">-1</param>
+  <param name="grbl_dir_invert_x" type="bool" gui-hidden="true">false</param>
+  <param name="grbl_dir_invert_y" type="bool" gui-hidden="true">false</param>
+  <param name="grbl_dir_invert_z" type="bool" gui-hidden="true">false</param>
+  <param name="grbl_home_invert_x" type="bool" gui-hidden="true">false</param>
+  <param name="grbl_home_invert_y" type="bool" gui-hidden="true">false</param>
+  <param name="grbl_home_invert_z" type="bool" gui-hidden="true">false</param>
+  <param name="no_rotate" type="bool" gui-hidden="true">false</param>
+  <param name="setup_type" type="string" gui-hidden="true">align</param>
+  <param name="penlift" type="int" gui-hidden="true">1</param>
+  <param name="digest" type="int" gui-hidden="true">0</param>
+  <param name="webhook" type="bool" gui-hidden="true">false</param>
+  <param name="webhook_url" type="string" gui-hidden="true"></param>
+  <param name="submode" type="string" gui-hidden="true">none</param>
+  <param name="language" type="string" gui-hidden="true">zh_CN</param>
+
+  <effect needs-live-preview="false">
+    <object-type>all</object-type>
+    <effects-menu>
+      <submenu name="DynamicNest 工具"/>
+    </effects-menu>
+  </effect>
+
+  <script>
+    <command location="extensions" interpreter="python">axidraw_control.py</command>
+  </script>
 </inkscape-extension>

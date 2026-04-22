@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+<name>DynamicNest 快速控制</name>
+<id>command.evilmadscientist.axidraw-quick-cn</id>
+<dependency type="extension">org.inkscape.output.svg.inkscape</dependency>
+<dependency type="executable" location="extensions">axidraw_control.py</dependency>
+
+<param name="mode" type="notebook">
+
+<page name="plot" gui-text="一键绘图">
+<label appearance="header">一键绘图</label>
+<label xml:space="preserve">默认会按 SVG 中所有可见图层的顺序直接输出，不需要手动指定图层号。通常保持“串口留空自动连接”即可，只有自动连接失败时再手动指定串口。</label>
+<spacer />
+<param name="copies" type="int" min="0" max="9999" gui-text="绘图份数：">1</param>
+<param name="preview" type="bool" gui-text="预览模式（仅模拟，不发送串口）：">false</param>
+<param name="auto_pause_between_layers" type="bool" gui-text="按图层自动暂停">true</param>
+<param name="manual_pen_change" type="bool" gui-text="图层暂停时进入换笔流程">true</param>
+<param name="pen_change_to_home" type="bool" gui-text="换笔时先回到原点">true</param>
+<param name="auto_sparse_linework" type="bool" gui-text="自动降级密排线稿">true</param>
+<param name="auto_sparse_line_mode" type="optiongroup" appearance="combo" gui-text="降级强度：">
+  <option value="standard">标准（推荐）</option>
+  <option value="conservative">保守</option>
+  <option value="aggressive">激进</option>
+  <option value="off">关闭</option>
+</param>
+<label xml:space="preserve">如果每个图层代表不同颜色或不同笔，勾选“按图层自动暂停”即可在每个非空图层开始前暂停；再勾选“图层暂停时进入换笔流程”，设备会抬笔、回到原点，等你换笔后继续。</label>
+</page>
+
+<page name="coords" gui-text="坐标系">
+<label appearance="header">坐标系设置</label>
+<label xml:space="preserve">这几个选项用于匹配你的控制器坐标方向。当前推荐默认值已经按你的设备预设好：反转 X 轴、对调 X/Y、原点左上。</label>
+<spacer />
+<param name="grbl_axis_invert_x" type="bool" gui-text="反转 X 轴">true</param>
+<param name="grbl_axis_invert_y" type="bool" gui-text="反转 Y 轴">false</param>
+<param name="grbl_axis_swap_xy" type="bool" gui-text="对调 X 轴和 Y 轴">true</param>
+<param name="auto_rotate" type="bool" gui-text="自动旋转页面">false</param>
+<label xml:space="preserve">起点位置：左上（LeftUp，0,0）。当前快速面板固定按左上原点工作。</label>
+</page>
+
+<page name="manual" gui-text="手动控制">
+<label appearance="header">手动控制</label>
+<label xml:space="preserve">进入本页后，只需要选一个动作，再点“应用”。常用操作都放在这里：点动、抬落笔、回工作原点、扫描串口、读取状态。</label>
+<spacer />
+<param name="manual_cmd" type="optiongroup" appearance="radio" gui-text="动作：">
+  <option value="fw_version">读取固件版本</option>
+  <option value="status_refresh">读取当前位置/状态（推荐）</option>
+  <option value="walk_mmy_pos">Y+ 点动</option>
+  <option value="walk_mmy_neg">Y- 点动</option>
+  <option value="walk_mmx_neg">X- 点动</option>
+  <option value="walk_mmx_pos">X+ 点动</option>
+  <option value="walk_home">回工作原点</option>
+  <option value="home_cycle">机械归位（$H）</option>
+  <option value="raise_pen">Z 抬笔</option>
+  <option value="lower_pen">Z 落笔</option>
+  <option value="enable_xy">解锁/使能电机（$X）</option>
+  <option value="disable_xy">失能电机</option>
+  <option value="ports_scan">扫描串口列表</option>
+  <option value="axis_read">读取 Grbl 轴设置</option>
+  <option value="none">不执行动作</option>
+</param>
+<param name="dist" type="float" precision="3" min="0.001" max="100000"
+gui-text="点动距离（mm）：">1.000</param>
+</page>
+
+<page name="res_plot" gui-text="继续绘图">
+<label appearance="header">继续绘图</label>
+<label xml:space="preserve">用于从 SVG 内保存的暂停位置继续输出。如果只是想把机器先移回原点，不要用这个页，请切到“回零”。</label>
+<spacer />
+</page>
+
+<page name="res_home" gui-text="回零">
+<label appearance="header">仅回零 / 回工作原点</label>
+<label xml:space="preserve">用于把机器回到工作起点，不继续绘图。如果你的机器还没完成机械归位，请先去“手动控制”页执行“机械归位（$H）”。</label>
+<spacer />
+</page>
+
+</param>
+
+<separator />
+<label appearance="header">公共设备设置</label>
+<label>所有页签共用这一组串口设置。一般保持“自动（推荐）”即可。</label>
+<param name="port_choice" type="optiongroup" appearance="combo" gui-text="串口下拉（可选）：">
+  <option value="auto">自动（推荐）</option>
+  <option value="COM1">COM1</option>
+  <option value="COM2">COM2</option>
+  <option value="COM3">COM3</option>
+  <option value="COM4">COM4</option>
+  <option value="COM5">COM5</option>
+  <option value="COM6">COM6</option>
+  <option value="COM7">COM7</option>
+  <option value="COM8">COM8</option>
+  <option value="COM9">COM9</option>
+  <option value="COM10">COM10</option>
+  <option value="COM11">COM11</option>
+  <option value="COM12">COM12</option>
+  <option value="COM13">COM13</option>
+  <option value="COM14">COM14</option>
+  <option value="COM15">COM15</option>
+  <option value="COM16">COM16</option>
+  <option value="COM17">COM17</option>
+  <option value="COM18">COM18</option>
+  <option value="COM19">COM19</option>
+  <option value="COM20">COM20</option>
+  <option value="COM21">COM21</option>
+  <option value="COM22">COM22</option>
+  <option value="COM23">COM23</option>
+  <option value="COM24">COM24</option>
+  <option value="COM25">COM25</option>
+  <option value="COM26">COM26</option>
+  <option value="COM27">COM27</option>
+  <option value="COM28">COM28</option>
+  <option value="COM29">COM29</option>
+  <option value="COM30">COM30</option>
+  <option value="COM31">COM31</option>
+  <option value="COM32">COM32</option>
+  <option value="COM33">COM33</option>
+  <option value="COM34">COM34</option>
+  <option value="COM35">COM35</option>
+  <option value="COM36">COM36</option>
+  <option value="COM37">COM37</option>
+  <option value="COM38">COM38</option>
+  <option value="COM39">COM39</option>
+  <option value="COM40">COM40</option>
+  <option value="COM41">COM41</option>
+  <option value="COM42">COM42</option>
+  <option value="COM43">COM43</option>
+  <option value="COM44">COM44</option>
+  <option value="COM45">COM45</option>
+  <option value="COM46">COM46</option>
+  <option value="COM47">COM47</option>
+  <option value="COM48">COM48</option>
+  <option value="COM49">COM49</option>
+  <option value="COM50">COM50</option>
+  <option value="COM51">COM51</option>
+  <option value="COM52">COM52</option>
+  <option value="COM53">COM53</option>
+  <option value="COM54">COM54</option>
+  <option value="COM55">COM55</option>
+  <option value="COM56">COM56</option>
+  <option value="COM57">COM57</option>
+  <option value="COM58">COM58</option>
+  <option value="COM59">COM59</option>
+  <option value="COM60">COM60</option>
+  <option value="COM61">COM61</option>
+  <option value="COM62">COM62</option>
+  <option value="COM63">COM63</option>
+  <option value="COM64">COM64</option>
+</param>
+<param name="port" type="string" gui-text="手填串口（留空自动）："></param>
+
+<param name="controller" type="string" gui-hidden="true">grbl_esp32</param>
+<param name="port_config" type="int" gui-hidden="true">0</param>
+<param name="grbl_baud_rate" type="string" gui-hidden="true">115200</param>
+<param name="grbl_auto_fetch" type="bool" gui-hidden="true">true</param>
+<param name="grbl_command_timeout" type="float" gui-hidden="true">2.0</param>
+<param name="pen_change_prompt" type="bool" gui-hidden="true">true</param>
+<param name="grbl_pen_down_slow_feed" type="float" gui-hidden="true">600.0</param>
+<param name="grbl_pen_down_settle_ms" type="int" gui-hidden="true">180</param>
+<param name="grbl_set_dir_mask" type="int" gui-hidden="true">-1</param>
+<param name="grbl_set_homing_dir_mask" type="int" gui-hidden="true">-1</param>
+<param name="grbl_dir_invert_x" type="bool" gui-hidden="true">false</param>
+<param name="grbl_dir_invert_y" type="bool" gui-hidden="true">false</param>
+<param name="grbl_dir_invert_z" type="bool" gui-hidden="true">false</param>
+<param name="grbl_home_invert_x" type="bool" gui-hidden="true">false</param>
+<param name="grbl_home_invert_y" type="bool" gui-hidden="true">false</param>
+<param name="grbl_home_invert_z" type="bool" gui-hidden="true">false</param>
+<param name="bounds_auto_scale" type="bool" gui-hidden="true">true</param>
+<param name="bounds_auto_scale_prompt" type="bool" gui-hidden="true">false</param>
+<param name="hiding" type="bool" gui-hidden="true">false</param>
+<param name="language" type="string" gui-hidden="true">zh_CN</param>
+
+<effect needs-live-preview="false">
+  <object-type>all</object-type>
+  <effects-menu>
+    <submenu name="DynamicNest 工具"/>
+  </effects-menu>
+</effect>
+
+<script>
+<command location="extensions" interpreter="python">axidraw_control.py</command>
+</script>
+
+</inkscape-extension>

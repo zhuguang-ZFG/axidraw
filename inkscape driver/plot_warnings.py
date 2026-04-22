@@ -24,14 +24,15 @@ Part of the AxiDraw driver for Inkscape
 https://github.com/evil-mad/AxiDraw
 
 """
+import gettext
 
 def layer_name_text(layer_name):
     '''Format layer name text for displaying in warning messages'''
     if layer_name == '__digest-root__':
-        return " found in the document root."
+        return gettext.gettext(" found in the document root.")
     if layer_name.strip() == '':
-        return "."
-    return " in a layer named " + layer_name.strip() + "."
+        return gettext.gettext(".")
+    return gettext.gettext(" in a layer named ") + layer_name.strip() + "."
 
 class PlotWarnings:
     """
@@ -73,41 +74,41 @@ class PlotWarnings:
         if 'voltage' in self.warning_dict:
             if 'voltage' not in self.suppress_list:
                 warning_text_list.append(
-                    "Note (voltage): Low voltage detected.\n" +
-                    "Check that power supply is plugged in.\n"
+                    gettext.gettext("Note (voltage): Low voltage detected.\n") +
+                    gettext.gettext("Check that power supply is plugged in.\n")
                 )
             self.warning_dict.pop('voltage')
 
         if 'bounds' in self.warning_dict:
             if 'bounds' not in self.suppress_list:
                 warning_text_list.append(
-                    "Warning (bounds): AxiDraw movement was limited by its" +
-                    "\nphysical range of motion. If everything else looks" +
-                    "\ncorrect, there may be an issue with the document size," +
-                    "\nor the wrong model of AxiDraw may be selected." +
-                    "\nPlease contact technical support if you need assistance.\n"
+                    gettext.gettext("Warning (bounds): AxiDraw movement was limited by its") +
+                    gettext.gettext("\nphysical range of motion. If everything else looks") +
+                    gettext.gettext("\ncorrect, there may be an issue with the document size,") +
+                    gettext.gettext("\nor the wrong model of AxiDraw may be selected.") +
+                    gettext.gettext("\nPlease contact technical support if you need assistance.\n")
                 )
             self.warning_dict.pop('bounds')
 
         if 'image' in self.warning_dict:
             if 'image' not in self.suppress_list:
                 warning_text_list.append(
-                    'Note (image): This file contains a bitmap image' +
+                    gettext.gettext('Note (image): This file contains a bitmap image') +
                     layer_name_text(self.warning_dict['image']) +
-                    "\nPlease convert images to vectors before plotting." +
-                    "\nConsider using the Inkscape Path > Trace Bitmap tool.\n"
+                    gettext.gettext("\nPlease convert images to vectors before plotting.") +
+                    gettext.gettext("\nConsider using the Inkscape Path > Trace Bitmap tool.\n")
                     )
             self.warning_dict.pop('image')
 
         if 'text' in self.warning_dict:
             if 'text' not in self.suppress_list:
                 warning_text_list.append(
-                    'Note (plain-text): This file contains some plain text\n' +
+                    gettext.gettext('Note (plain-text): This file contains some plain text\n') +
                     layer_name_text(self.warning_dict['text']) +
-                    "\nPlease convert text into vector paths before plotting." +
-                    "\nConsider using the Inkscape Path > Object to Path tool." +
-                    "\nAlternately, consider using Hershey Text to render your" +
-                    "\ntext with stroke-based fonts.\n"
+                    gettext.gettext("\nPlease convert text into vector paths before plotting.") +
+                    gettext.gettext("\nConsider using the Inkscape Path > Object to Path tool.") +
+                    gettext.gettext("\nAlternately, consider using Hershey Text to render your") +
+                    gettext.gettext("\ntext with stroke-based fonts.\n")
                 )
             self.warning_dict.pop('text')
 
@@ -116,10 +117,10 @@ class PlotWarnings:
             if object_type in self.suppress_list:
                 continue
             warning_text_list.append(
-                'Note (object): Unable to plot ' + object_type + ' object' +
+                gettext.gettext('Note (object): Unable to plot ') + object_type + gettext.gettext(' object') +
                 layer_name_text(layer_location) +
-                "\nPlease convert it to a path prior to plotting, and/or " +
-                "contact technical support if you need assistance.\n"
+                gettext.gettext("\nPlease convert it to a path prior to plotting, and/or ") +
+                gettext.gettext("contact technical support if you need assistance.\n")
             )
 
         return warning_text_list

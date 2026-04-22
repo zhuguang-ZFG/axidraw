@@ -26,6 +26,8 @@ https://github.com/evil-mad/AxiDraw
 import sys
 import ast
 import logging
+import gettext
+import re
 
 from axidrawinternal.plot_utils_import import from_dependency_import
 requests = from_dependency_import('requests')
@@ -39,6 +41,37 @@ AXIDRAW_CONTROL = "AxiDraw Control"
 
 # EBB firmware key
 EBB_FIRMWARE = "EBB Firmware"
+
+
+def _normalize_version_text(raw_version):
+    """Normalize firmware version text into a parseable candidate."""
+    if raw_version is None:
+        return None
+    text = str(raw_version).strip()
+    if not text:
+        return None
+
+    # Handle Grbl/FluidNC identity style, e.g. "[VER:1.3a.20211103:]"
+    match = re.search(r'VER:([^:\]]+)', text, flags=re.IGNORECASE)
+    if match:
+        text = match.group(1).strip()
+
+    # Keep only the first version-like token.
+    token = re.search(r'(\d+(?:\.\d+)*(?:[a-zA-Z]\d*)?)', text)
+    if token:
+        return token.group(1)
+    return text
+
+
+def _safe_parse_version(raw_version):
+    """Parse version text safely; return None if not parseable."""
+    candidate = _normalize_version_text(raw_version)
+    if not candidate:
+        return None
+    try:
+        return version.parse(candidate)
+    except Exception:  # packaging may raise InvalidVersion
+        return None
 
 def get_versions_online(check_updates, message_fun, keys = None):
     '''
@@ -60,7 +93,7 @@ def get_versions_online(check_updates, message_fun, keys = None):
             msg = f'{err_info}'
             logger.error(msg)
     else:
-        message_fun('Note: Online version checking disabled.')
+        message_fun(gettext.gettext('Note: Online version checking disabled.'))
 
     return online_versions
 
@@ -79,10 +112,10 @@ def _query_versions_url(keys):
     try:
         text = requests.get(url, timeout=15).text
     except requests.exceptions.Timeout as err:
-        raise RuntimeError("Unable to check for updates online; connection timed out.\n") from err
+        raise RuntimeError(gettext.gettext("Unable to check for updates online; connection timed out.\n")) from err
     except (RuntimeError, requests.exceptions.ConnectionError) as err_info:
-        raise RuntimeError("Could not contact server to check for updates. " +
-            f"Are you connected to the internet?\n\n(Error details: {err_info})\n") from err_info
+        raise RuntimeError(gettext.gettext("Could not contact server to check for updates. ") +
+            f"{gettext.gettext('Are you connected to the internet?')}\n\n({gettext.gettext('Error details')}: {err_info})\n") from err_info
 
     if text:
         try:
@@ -90,9 +123,12 @@ def _query_versions_url(keys):
             requested_versions = { key: version.parse(all_versions.get(key)) for key in keys }
             return requested_versions
         except (RuntimeError, ValueError, KeyError, SyntaxError) as err_info:
-            raise RuntimeError("Could not parse server response. " +
-                    f"This is probably the server's fault.\n\n(Error details: {err_info}\n)"
-                    ).with_traceback(sys.exc_info()[2])
+            details_label = gettext.gettext('Error details')
+            server_fault_text = gettext.gettext("This is probably a server-side issue.")
+            raise RuntimeError(
+                gettext.gettext("Could not parse server response. ") +
+                f"{server_fault_text}\n\n({details_label}: {err_info}\n)"
+            ).with_traceback(sys.exc_info()[2])
 
     return requested_versions
 
@@ -182,13 +218,16 @@ def report_ebb_version(fw_version_string, online_versions, message_fun):
     '''
     message_fun(f"\nYour AxiDraw has firmware version {fw_version_string}.")
 
-    if online_versions:
-        if online_versions[EBB_FIRMWARE] > version.parse(fw_version_string):
+    parsed_fw_version = _safe_parse_version(fw_version_string)
+    if online_versions and parsed_fw_version is not None:
+        if online_versions[EBB_FIRMWARE] > parsed_fw_version:
             message_fun(
                     f"An update is available to EBB firmware v. {online_versions[EBB_FIRMWARE]};")
             message_fun("To download the updater, please visit: axidraw.com/fw\n")
         else:
             message_fun("Your firmware is up to date; no updates are available.\n")
+    elif online_versions:
+        message_fun("Firmware version format is non-EBB; skipping EBB update check.\n")
 
 def report_version_info(plot_status, check_updates, current_version_string, preview, message_fun):
     '''
@@ -232,9 +271,10 @@ def min_fw_version(plot_status, version_string):
     Return False if the EBB firmware version is below version_string.
     Return None if we are unable to determine True or False.
     '''
-    fw_version = plot_status.fw_version
-    if fw_version is None:
+    fw_version = _safe_parse_version(plot_status.fw_version)
+    target_version = _safe_parse_version(version_string)
+    if fw_version is None or target_version is None:
         return None
-    if version.parse(fw_version) >= version.parse(version_string):
+    if fw_version >= target_version:
         return True
     return False

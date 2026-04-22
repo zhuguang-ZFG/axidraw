@@ -29,8 +29,10 @@ Requires Python 3.7 or newer.
 
 import logging
 import time
+import gettext
 
 from axidrawinternal.plot_utils_import import from_dependency_import # plotink
+from axidrawinternal import serial_utils
 ebb_serial = from_dependency_import('plotink.ebb_serial')  # https://github.com/evil-mad/plotink
 ebb_motion = from_dependency_import('plotink.ebb_motion')
 plot_utils = from_dependency_import('plotink.plot_utils')
@@ -73,10 +75,14 @@ def feed(ad_ref, move_list):
             return # Physical location is not well-defined; stop here.
 
         if move[0] == 'lower':
+            if serial_utils.is_grbl(ad_ref.plot_status):
+                serial_utils.grbl_flush_motion(ad_ref.plot_status, timeout_s=5.0, wait_idle=False)
             ad_ref.pen.pen_lower(ad_ref)
             continue
 
         if move[0] == 'raise':
+            if serial_utils.is_grbl(ad_ref.plot_status):
+                serial_utils.grbl_flush_motion(ad_ref.plot_status, timeout_s=5.0, wait_idle=False)
             ad_ref.pen.pen_raise(ad_ref)
             continue
 
@@ -122,11 +128,31 @@ def feed_sm(ad_ref, move, drip_logger):
         ad_ref.preview.log_sm_move(ad_ref, move)
 
     else:
-        ebb_motion.doXYMove(ad_ref.plot_status.port, move_steps2, move_steps1,\
-            move_time, False)
+        if serial_utils.is_grbl(ad_ref.plot_status):
+            rapid = bool(ad_ref.pen.phys.z_up)
+            speed_in_s = ad_ref.speed_penup if rapid else ad_ref.speed_pendown
+            ok, _lines = serial_utils.grbl_queue_linear(
+                ad_ref.plot_status,
+                f_new_x,
+                f_new_y,
+                speed_in_s,
+                rapid=rapid,
+                timeout_s=max(1.0, float(ad_ref.options.grbl_command_timeout)))
+            if not ok:
+                ad_ref.plot_status.stopped = 104
+                ad_ref.user_message_fun(gettext.gettext(
+                    "Grbl motion command failed; plotting was stopped."))
+                return
+            status_age = time.time() - float(getattr(ad_ref.plot_status,
+                "grbl_last_status_timestamp", 0) or 0)
+            if status_age > 0.25 and ad_ref.options.mode != "manual":
+                serial_utils.grbl_query_status(ad_ref.plot_status, timeout_s=0.15)
+        else:
+            ebb_motion.doXYMove(ad_ref.plot_status.port, move_steps2, move_steps1,\
+                move_time, False)
 
         if move_time > 50: # Sleep before issuing next command
-            if ad_ref.options.mode != "manual":
+            if ad_ref.options.mode != "manual" and not serial_utils.is_grbl(ad_ref.plot_status):
                 time.sleep(float(move_time - 30) / 1000.0)
     # drip_logger.debug('XY move: (%s, %s), in %s ms', move_steps1, move_steps2, move_time)
     # drip_logger.debug('fNew(X,Y): (%.5f, %.5f)', f_new_x, f_new_y)

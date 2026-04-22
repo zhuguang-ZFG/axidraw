@@ -1,38 +1,37 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-      <name>Process Illustrator SVG</name>
+      <name>处理 Illustrator SVG</name>
       <id>command.evilmadscientist.process_ai</id>
-      <label appearance="header" indent="2">Process Illustrator SVG v 1.1</label>
+      <label appearance="header" indent="2">处理 Illustrator SVG v1.1</label>
       <label xml:space="preserve" indent="1">
-Apply this extension after opening an SVG file
-    exported from Adobe Illustrator to:
+打开 Adobe Illustrator 导出的 SVG 文件后，可运行本扩展完成以下处理：
 
-(1) Recognize and import named layers.
+(1) 识别并导入命名图层。
 
-(2) Correct document scale, if necessary.
-    (Illustrator may export SVG at 75% of correct size.)
+(2) 必要时修正文档比例。
+    （Illustrator 导出的 SVG 可能只有正确尺寸的 75%）
 </label>
      <spacer/>
      <separator />
      <spacer/>
-      <label appearance="header" indent="2">How to export SVG from Illustrator</label>
-      <label xml:space="preserve" indent="1">For best results when exporting from AI:
- * When naming layers in AI, either:
-      * Use just a number as the layer name, or
-      * Include a space in each name
- * Use File > Export > Export As...
- * Check the "Use Artboards" option
- * Select the SVG format option and click Export
- * Styling: Presentation attributes
- * Object IDs: Layer names
- * Minify, Responsive: Both off
+      <label appearance="header" indent="2">Illustrator 导出 SVG 建议</label>
+      <label xml:space="preserve" indent="1">为了获得更好的兼容效果，建议在 AI 中按以下方式导出：
+ * 图层命名时：
+      * 直接使用数字作为图层名，或
+      * 在每个图层名称中包含空格
+ * 使用“文件 > 导出 > 导出为...”
+ * 勾选“使用画板”
+ * 选择 SVG 格式并点击导出
+ * Styling：Presentation attributes
+ * Object IDs：Layer names
+ * Minify、Responsive：都关闭
  
-Then, open the SVG file in Inkscape and Apply this extension.
+然后在 Inkscape 中打开该 SVG，并执行本扩展。
 </label>
       <effect needs-live-preview="false">
         <object-type>all</object-type>
         <effects-menu>
-        <submenu name="AxiDraw Utilities"/>
+        <submenu name="DynamicNest 工具"/>
         </effects-menu>
     </effect>
       <script>
