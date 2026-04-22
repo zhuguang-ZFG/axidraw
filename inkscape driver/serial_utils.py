@@ -54,18 +54,57 @@ def _grbl_port_records():
         hwid = (getattr(record, "hwid", "") or "").lower()
         device = (getattr(record, "device", "") or "").lower()
 
-        # Prefer USB serial adapters and de-prioritize motherboard COM ports like COM1.
+        # Prefer Bluetooth serial first, then USB serial, and de-prioritize motherboard COM ports.
+        is_bluetooth_serial = _is_bluetooth_serial_record(record)
         is_usb_serial = ("usb" in description) or ("usb" in hwid) or ("vid:pid" in hwid)
         is_builtin_uart = ("acpi" in hwid) or ("pnp" in hwid) or description.startswith("communication port")
         is_low_com_builtin = is_builtin_uart and device in ("com1", "com2")
         return (
-            0 if is_usb_serial else 1,
+            0 if is_bluetooth_serial else (1 if is_usb_serial else 2),
             1 if is_low_com_builtin else 0,
             device,
         )
 
     port_records.sort(key=_priority)
     return port_records
+
+
+def _is_usb_serial_record(record):
+    """Return True when the port appears to be an external USB serial adapter."""
+    description = (getattr(record, "description", "") or "").lower()
+    hwid = (getattr(record, "hwid", "") or "").lower()
+    return ("usb" in description) or ("usb" in hwid) or ("vid:pid" in hwid)
+
+
+def _is_bluetooth_serial_record(record):
+    """Return True when the port appears to be a Bluetooth virtual COM port."""
+    description = (getattr(record, "description", "") or "").lower()
+    hwid = (getattr(record, "hwid", "") or "").lower()
+    bluetooth_tokens = ("bluetooth", "bth", "rfcomm", "wireless")
+    return any(token in description for token in bluetooth_tokens) or \
+        any(token in hwid for token in bluetooth_tokens)
+
+
+def _bluetooth_record_rank(record):
+    """
+    Rank Bluetooth serial records.
+    Lower is better. Prefer ports that look like the active SPP channel and
+    de-prioritize placeholder/empty RFCOMM endpoints such as LOCALMFG&0000.
+    """
+    hwid = (getattr(record, "hwid", "") or "").lower()
+    description = (getattr(record, "description", "") or "").lower()
+    device = (getattr(record, "device", "") or "").lower()
+    score = 0
+    if "localmfg&0000" in hwid:
+        score += 50
+    if "standard serial" in description or "标准串行" in description:
+        score += 0
+    if device.startswith("com"):
+        try:
+            score += int(device[3:]) / 1000.0
+        except Exception:
+            pass
+    return score
 
 
 def is_grbl(plot_status):
@@ -149,7 +188,12 @@ def _connect_grbl(options, plot_status, message_fun, logger):
     preferred_ports = []
     selected_port = None
     dropdown_port = getattr(options, "port_choice", "auto")
-    discovered_ports = [item.device for item in _grbl_port_records()]
+    discovered_records = _grbl_port_records()
+    discovered_ports = [item.device for item in discovered_records]
+    bt_records = [item for item in discovered_records if _is_bluetooth_serial_record(item)]
+    bt_records.sort(key=_bluetooth_record_rank)
+    bt_discovered_ports = [item.device for item in bt_records]
+    usb_discovered_ports = [item.device for item in discovered_records if _is_usb_serial_record(item)]
     last_error = None
     busy_ports = []
     handshake_fail_ports = []
@@ -158,16 +202,23 @@ def _connect_grbl(options, plot_status, message_fun, logger):
     if options.port:
         selected_port = str(options.port).strip('"')
         preferred_ports.append(selected_port)
-        # Auto-fallback: if selected port fails, try remaining discovered ports.
-        preferred_ports.extend([item for item in discovered_ports if item != selected_port])
+        # Auto-fallback: prefer Bluetooth/USB serial ports, not motherboard COM ports like COM1.
+        fallback_ports = bt_discovered_ports + [item for item in usb_discovered_ports if item not in bt_discovered_ports]
+        fallback_ports = fallback_ports or discovered_ports
+        preferred_ports.extend([item for item in fallback_ports if item != selected_port])
     else:
         if dropdown_port and str(dropdown_port).lower() != "auto":
             dropdown_port = str(dropdown_port).strip('"')
             preferred_ports.append(dropdown_port)
-        preferred_ports.extend([item for item in discovered_ports if item not in preferred_ports])
+            fallback_ports = bt_discovered_ports + [item for item in usb_discovered_ports if item not in bt_discovered_ports]
+            fallback_ports = fallback_ports or discovered_ports
+        else:
+            fallback_ports = bt_discovered_ports + [item for item in usb_discovered_ports if item not in bt_discovered_ports]
+            fallback_ports = fallback_ports or discovered_ports
+        preferred_ports.extend([item for item in fallback_ports if item not in preferred_ports])
 
     # If auto mode finds a CH340/USB serial controller, try it twice before giving up.
-    if not preferred_ports and "COM3" in discovered_ports:
+    if not preferred_ports and "COM3" in usb_discovered_ports:
         preferred_ports.append("COM3")
 
     for pass_index in range(3):
@@ -252,6 +303,45 @@ def _connect_grbl(options, plot_status, message_fun, logger):
     if last_error:
         message_fun("最近一次连接错误：{}。".format(last_error))
     return False
+
+
+def sanitize_grbl_option_defaults(options, message_fun=None):
+    """Normalize hidden Grbl UI parameters that Inkscape may truncate or coerce oddly."""
+    def _emit(msg):
+        if message_fun:
+            message_fun(msg)
+
+    try:
+        slow_feed = float(getattr(options, "grbl_pen_down_slow_feed", 600.0))
+    except Exception:
+        slow_feed = 600.0
+    if slow_feed < 60.0:
+        _emit("检测到异常低速落笔速度参数 {}，已回退到 600 mm/min。".format(
+            getattr(options, "grbl_pen_down_slow_feed", slow_feed)))
+        options.grbl_pen_down_slow_feed = 600.0
+
+    try:
+        settle_ms = int(float(getattr(options, "grbl_pen_down_settle_ms", 180)))
+    except Exception:
+        settle_ms = 180
+    if settle_ms < 50:
+        _emit("检测到异常落笔缓冲参数 {}，已回退到 180 ms。".format(
+            getattr(options, "grbl_pen_down_settle_ms", settle_ms)))
+        options.grbl_pen_down_settle_ms = 180
+
+    try:
+        dir_mask = int(float(getattr(options, "grbl_set_dir_mask", -1)))
+    except Exception:
+        dir_mask = -1
+    if dir_mask == 0:
+        options.grbl_set_dir_mask = -1
+
+    try:
+        homing_mask = int(float(getattr(options, "grbl_set_homing_dir_mask", -1)))
+    except Exception:
+        homing_mask = -1
+    if homing_mask == 0:
+        options.grbl_set_homing_dir_mask = -1
 
 
 def _grbl_handshake(port, timeout_s=2.0):

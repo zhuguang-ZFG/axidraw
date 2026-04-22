@@ -93,6 +93,7 @@ class AxiDrawWrapperClass( inkex.Effect ):
         i18n.init_gettext(options=self.options, params=self.params)
         self.options.mode = self.options.mode.strip("\"")
         self.verbose = False
+        serial_utils.sanitize_grbl_option_defaults(self.options, logger.warning)
 
         if self.verbose:
             logger.setLevel(logging.INFO) # default is generally logging.WARNING

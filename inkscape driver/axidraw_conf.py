@@ -305,6 +305,8 @@ const_speed_factor_hr = 0.4  # In constant-speed mode, multiply pen-down speed b
 
 start_pos_x = 0  # Parking position, inches. Default: 0
 start_pos_y = 0  # Parking position, inches. Default: 0
+origin_corner = 'left_upper'  # Default logical origin for this plotter fork: left_upper / origin
+parking_corner = 'left_upper'  # Parking target for this plotter fork: left_upper / origin
 
 # Acceleration & Deceleration rates:
 accel_rate = 40.0    # Standard acceleration rate, inches per second squared

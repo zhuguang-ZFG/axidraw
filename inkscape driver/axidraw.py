@@ -294,8 +294,9 @@ class AxiDraw(inkex.Effect):
 
         self.doc_units = "in"
 
-        self.pen.phys.xpos = self.params.start_pos_x
-        self.pen.phys.ypos = self.params.start_pos_y
+        origin_x, origin_y = self._origin_target_xy()
+        self.pen.phys.xpos = origin_x
+        self.pen.phys.ypos = origin_y
 
         self.layer_speed_pendown = -1
         self.plot_status.copies_to_plot = 1
@@ -807,15 +808,21 @@ class AxiDraw(inkex.Effect):
         if cmd == "walk_home":
             if not _state_guard():
                 return
+            park_x, park_y = self._origin_target_xy()
             ok_mode, _lines = serial_utils.grbl_send(
                 self.plot_status, "G90", expect_ok=True, timeout_s=timeout_s)
-            ok_move, _lines = serial_utils.grbl_send(
-                self.plot_status, "G0 X0 Y0", expect_ok=True, timeout_s=timeout_s)
+            ok_move, _lines = serial_utils.grbl_move_linear(
+                self.plot_status,
+                park_x,
+                park_y,
+                feed_in_s=max(self.speed_penup, 0.2),
+                rapid=True,
+                timeout_s=max(timeout_s, 3.0))
             if not (ok_mode and ok_move):
                 logger.error(gettext.gettext("Failed to execute walk_home in Grbl mode."))
                 return
-            self.pen.phys.xpos = 0
-            self.pen.phys.ypos = 0
+            self.pen.phys.xpos = park_x
+            self.pen.phys.ypos = park_y
             return
 
         if cmd == "home_cycle":
@@ -1083,7 +1090,7 @@ class AxiDraw(inkex.Effect):
 
             if self.plot_status.stopped == 0: # Return Home after normal plot
                 self.plot_status.resume.new.clean() # Clear flags indicating resume status
-                self.go_to_position(self.params.start_pos_x, self.params.start_pos_y)
+                self.go_to_parking_position(wait_for_completion=True)
 
         finally: # In case of an exception and loss of the serial port...
             pass
@@ -1241,7 +1248,7 @@ class AxiDraw(inkex.Effect):
             self.pen.pen_raise(self)
             if bool(getattr(self.options, "pen_change_to_home",
                             getattr(self.params, "pen_change_to_home", True))):
-                self.go_to_position(self.params.start_pos_x, self.params.start_pos_y)
+                self.go_to_parking_position(wait_for_completion=True)
             if bool(getattr(self.options, "pen_change_prompt",
                             getattr(self.params, "pen_change_prompt", True))):
                 if not self.confirm_pen_change():
@@ -1271,6 +1278,13 @@ class AxiDraw(inkex.Effect):
                 return False
             root = tkinter.Tk()
             root.withdraw()
+            try:
+                root.attributes("-topmost", True)
+                root.lift()
+                root.focus_force()
+                root.update_idletasks()
+            except Exception:
+                pass
             result = messagebox.askyesno("绘图机换笔", prompt_text)
             root.destroy()
             return result
@@ -1320,6 +1334,13 @@ class AxiDraw(inkex.Effect):
         try:
             root = tkinter.Tk()
             root.withdraw()
+            try:
+                root.attributes("-topmost", True)
+                root.lift()
+                root.focus_force()
+                root.update_idletasks()
+            except Exception:
+                pass
             result = messagebox.askyesno("AxiDraw Bounds Warning", prompt_text)
             root.destroy()
             return result
@@ -1400,6 +1421,44 @@ class AxiDraw(inkex.Effect):
         target_data = (x_dest, y_dest, 0, 0, ignore_limits)
         the_trajectory = motion.compute_segment(self, target_data, xyz_pos)
         dripfeed.feed(self, the_trajectory[0])
+
+    def _parking_target_xy(self):
+        """Return logical XY target for parking/home motion."""
+        parking_corner = str(getattr(self.params, "parking_corner", "origin") or "origin").strip().lower()
+        if serial_utils.is_grbl(self.plot_status) and parking_corner == "left_upper":
+            physical_x = 0.0
+            physical_y = max(float(getattr(self.params, "y_travel_default", self.bounds[1][1])), 0.0)
+            return serial_utils._axis_map_in(self.plot_status, physical_x, physical_y)
+        return self.params.start_pos_x, self.params.start_pos_y
+
+    def _origin_target_xy(self):
+        """Return logical XY target for configured default origin."""
+        origin_corner = str(getattr(self.params, "origin_corner", "origin") or "origin").strip().lower()
+        if origin_corner != "left_upper":
+            return self.params.start_pos_x, self.params.start_pos_y
+
+        physical_x = 0.0
+        physical_y = max(float(getattr(self.params, "y_travel_default", self.bounds[1][1])), 0.0)
+
+        swap_xy = bool(getattr(self.plot_status, "grbl_axis_swap_xy", getattr(self.params, "grbl_axis_swap_xy", False)))
+        invert_x = bool(getattr(self.plot_status, "grbl_axis_invert_x", getattr(self.params, "grbl_axis_invert_x", False)))
+        invert_y = bool(getattr(self.plot_status, "grbl_axis_invert_y", getattr(self.params, "grbl_axis_invert_y", False)))
+
+        logical_x = -physical_x if invert_x else physical_x
+        logical_y = -physical_y if invert_y else physical_y
+        if swap_xy:
+            logical_x, logical_y = logical_y, logical_x
+        return logical_x, logical_y
+
+    def go_to_parking_position(self, wait_for_completion=True):
+        """Move to configured parking/home position and optionally wait until motion completes."""
+        park_x, park_y = self._parking_target_xy()
+        self.go_to_position(park_x, park_y)
+        if wait_for_completion and serial_utils.is_grbl(self.plot_status) and not self.options.preview:
+            serial_utils.grbl_flush_motion(
+                self.plot_status,
+                timeout_s=max(5.0, float(getattr(self.options, "grbl_command_timeout", 2.0)) * 4.0),
+                wait_idle=True)
 
     def pause_check(self):
         """ Manage Pause functionality and stop plot if requested or at certain errors """
