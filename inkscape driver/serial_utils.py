@@ -732,7 +732,7 @@ def grbl_send(plot_status, command, expect_ok=True, timeout_s=2.0):
     return result["ok"], result["lines"]
 
 
-def grbl_initialize_motion(plot_status, timeout_s=2.0, zero_z=True):
+def grbl_initialize_motion(plot_status, timeout_s=2.0, zero_z=True, zero_xy=False):
     """Initialize controller motion mode for plotting/pen moves."""
     status_line = grbl_query_status(plot_status, timeout_s=min(timeout_s, 0.8))
     state = grbl_status_state(status_line)
@@ -748,6 +748,8 @@ def grbl_initialize_motion(plot_status, timeout_s=2.0, zero_z=True):
             return False, "wait_idle", {"ok": False, "kind": "busy", "lines": [state]}
 
     commands = ["G90", "G21"]
+    if zero_xy:
+        commands.append("G92 X0 Y0")
     if zero_z:
         commands.append("G92 Z0")
     for command in commands:
@@ -758,6 +760,7 @@ def grbl_initialize_motion(plot_status, timeout_s=2.0, zero_z=True):
             timeout_s=timeout_s)
         if not result["ok"]:
             return False, command, result
+    grbl_query_status(plot_status, timeout_s=min(timeout_s, 0.8))
     return True, None, None
 
 

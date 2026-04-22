@@ -294,9 +294,8 @@ class AxiDraw(inkex.Effect):
 
         self.doc_units = "in"
 
-        origin_x, origin_y = self._origin_target_xy()
-        self.pen.phys.xpos = origin_x
-        self.pen.phys.ypos = origin_y
+        self.pen.phys.xpos = self.params.start_pos_x
+        self.pen.phys.ypos = self.params.start_pos_y
 
         self.layer_speed_pendown = -1
         self.plot_status.copies_to_plot = 1
@@ -1571,12 +1570,16 @@ class AxiDraw(inkex.Effect):
             ok_init, failed_cmd, _result = serial_utils.grbl_initialize_motion(
                 self.plot_status,
                 timeout_s=timeout_s,
-                zero_z=True)
+                zero_z=True,
+                zero_xy=bool(getattr(self.params, "grbl_zero_xy_on_connect", True)))
             if not ok_init:
                 self.plot_status.stopped = 104
                 logger.error(
                     gettext.gettext(
                         "Failed to initialize Grbl motion mode ({0}).").format(failed_cmd))
+            else:
+                self.pen.phys.xpos = 0.0
+                self.pen.phys.ypos = 0.0
         # ebb_serial.command(self.plot_status.port, "CU,3,1\r") # EBB 2.8.1+: Enable data-low LED
 
     def query_ebb_voltage(self):
