@@ -656,6 +656,38 @@ def _grbl_write_payload(plot_status, payload, flush=False):
         plot_status.port.flush()
 
 
+def grbl_send_realtime(plot_status, payload, flush=True):
+    """Send a realtime control byte sequence such as jog cancel or feed hold."""
+    if plot_status.port is None:
+        return False
+    try:
+        if isinstance(payload, int):
+            payload = bytes([payload])
+        _grbl_write_payload(plot_status, payload, flush=flush)
+        return True
+    except Exception:
+        return False
+
+
+def grbl_cancel_jog(plot_status, timeout_s=2.0):
+    """Cancel the current jog operation and wait briefly for Grbl to leave Jog state."""
+    if not grbl_send_realtime(plot_status, b"\x85", flush=True):
+        return False
+    end = time.time() + max(timeout_s, 0.2)
+    while time.time() < end:
+        status_line = grbl_query_status(plot_status, timeout_s=0.25)
+        state = grbl_status_state(status_line)
+        if state not in ("Jog", "Run"):
+            return True
+        time.sleep(0.05)
+    return True
+
+
+def grbl_feed_hold(plot_status):
+    """Request a feed hold using Grbl realtime '!'."""
+    return grbl_send_realtime(plot_status, b"!", flush=True)
+
+
 def _grbl_wait_for_buffer_space(plot_status, payload_len, timeout_s=3.0):
     """Wait until tracked Grbl RX usage leaves room for one more line."""
     reserve = 4
@@ -1105,6 +1137,16 @@ def _axis_map_out(plot_status, x_in, y_in):
     """Map logical XY into physical XY for outgoing Grbl motion."""
     x_out = x_in
     y_out = y_in
+    origin = _normalize_coordinate_origin(getattr(plot_status, "grbl_coordinate_origin", "bottom_left"))
+    if origin == "top_left":
+        y_out = -y_out
+    elif origin == "top_right":
+        x_out = -x_out
+        y_out = -y_out
+    elif origin == "bottom_right":
+        x_out = -x_out
+    elif origin == "center":
+        y_out = -y_out
     if getattr(plot_status, "grbl_axis_invert_x", False):
         x_out = -x_out
     if getattr(plot_status, "grbl_axis_invert_y", False):
@@ -1124,7 +1166,42 @@ def _axis_map_in(plot_status, x_in, y_in):
         x_out = -x_out
     if getattr(plot_status, "grbl_axis_invert_y", False):
         y_out = -y_out
+    origin = _normalize_coordinate_origin(getattr(plot_status, "grbl_coordinate_origin", "bottom_left"))
+    if origin == "top_left":
+        y_out = -y_out
+    elif origin == "top_right":
+        x_out = -x_out
+        y_out = -y_out
+    elif origin == "bottom_right":
+        x_out = -x_out
+    elif origin == "center":
+        y_out = -y_out
     return x_out, y_out
+
+
+def _normalize_coordinate_origin(value):
+    """Normalize origin aliases to canonical names used by the plotter mapping."""
+    raw = str(value or "").strip().lower()
+    alias_map = {
+        "left_upper": "top_left",
+        "leftup": "top_left",
+        "left_up": "top_left",
+        "origin": "top_left",
+        "right_upper": "top_right",
+        "rightup": "top_right",
+        "right_up": "top_right",
+        "left_lower": "bottom_left",
+        "leftdown": "bottom_left",
+        "left_down": "bottom_left",
+        "right_lower": "bottom_right",
+        "rightdown": "bottom_right",
+        "right_down": "bottom_right",
+        "centre": "center",
+    }
+    raw = alias_map.get(raw, raw)
+    if raw not in {"top_left", "top_right", "bottom_left", "bottom_right", "center"}:
+        return "bottom_left"
+    return raw
 
 
 def grbl_write_setting(plot_status, setting_id, value, timeout_s=2.0):

@@ -160,6 +160,10 @@ def core_options(config):
                         type=str, action="store", dest="grbl_disable_motors_cmd",\
                         default=config.get("grbl_disable_motors_cmd", "$MD"),\
                         help="G-code command for disabling steppers in Grbl mode.")
+    options.add_argument("--grbl_coordinate_origin",\
+                        type=str, action="store", dest="grbl_coordinate_origin",\
+                        default=config.get("grbl_coordinate_origin", "top_left"),\
+                        help="Logical document origin for Grbl mapping: top_left/top_right/bottom_left/bottom_right/center.")
     options.add_argument("--grbl_axis_swap_xy",\
                         type=inkex.boolean_option, action="store", dest="grbl_axis_swap_xy",\
                         default=config.get("grbl_axis_swap_xy", False),\
@@ -326,7 +330,7 @@ def core_mode_options(config):
                         default=config["manual_cmd"],\
                         help="Manual command. One of: [fw_version, raise_pen, lower_pen, "\
                         + "walk_x, walk_y, walk_mmx, walk_mmy, walk_mmx_pos, walk_mmx_neg, "\
-                        + "walk_mmy_pos, walk_mmy_neg, walk_home, enable_xy, "\
+                        + "walk_mmy_pos, walk_mmy_neg, jog_stop, walk_home, enable_xy, "\
                         + "disable_xy, axis_read, axis_apply, status_refresh, home_cycle, ports_scan, "\
                         + "res_read, res_adj_in, res_adj_mm, strip_data]. Default: fw_version")
 
@@ -335,6 +339,18 @@ def core_mode_options(config):
                         default=config["dist"],\
                         help="Distance for manual walk or changing resume position. "\
                             + "(The argument name walk_dist is deprecated.)")
+    options.add_argument("--manual_jog_step_preset",\
+                        type=str, action="store", dest="manual_jog_step_preset",\
+                        default=config.get("manual_jog_step_preset", "1"),\
+                        help="Manual jog step preset in mm: custom/0.1/1/5/10.")
+    options.add_argument("--manual_jog_repeat",\
+                        type=int, action="store", dest="manual_jog_repeat",\
+                        default=config.get("manual_jog_repeat", 1),\
+                        help="Repeat count for manual jog burst actions in plugin mode.")
+    options.add_argument("--manual_auto_status_refresh",\
+                        type=inkex.boolean_option, action="store", dest="manual_auto_status_refresh",\
+                        default=config.get("manual_auto_status_refresh", True),\
+                        help="Refresh position/status after manual jog actions.")
 
     options.add_argument("--layer",\
                         type=int, action="store", dest="layer",\

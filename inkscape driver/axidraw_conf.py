@@ -56,6 +56,9 @@ default_layer = 1       # Layer(s) selected for layers mode (1-1000). Default 1
 
 manual_cmd = 'fw_version'   # Manual command to execute when in manual mode.
                             # Default 'fw_version'
+manual_jog_step_preset = '1'  # Manual jog step preset in mm: custom / 0.1 / 1 / 5 / 10
+manual_jog_repeat = 1       # Repeat count for plugin-side jog bursts in manual mode.
+manual_auto_status_refresh = True  # If True, refresh status after manual jog actions.
 
 dist = 1.0              # Distance to walk in "walking" manual commands or changing
                             # resume position in the APIs. Variable units. Default 1.0
@@ -104,6 +107,7 @@ grbl_pen_down_cmd = 'G1 Z5 F3000'  # Direct Z move is faster and more reliable o
 grbl_pen_down_slow_feed = 0.0 # No extra slow feed override; keep the explicit G-code feed above.
 grbl_pen_down_settle_ms = 0 # No extra settle delay; wait for controller idle instead of adding fixed latency.
 grbl_disable_motors_cmd = '$MD' # Paixi firmware motor-disable command
+grbl_coordinate_origin = 'top_left' # Logical document origin mode: top_left / top_right / bottom_left / bottom_right / center
 grbl_axis_swap_xy = True # Software-level XY swap for Grbl motion output
 grbl_axis_invert_x = True # Software-level invert X sign for Grbl motion output
 grbl_axis_invert_y = False # Software-level invert Y sign for Grbl motion output

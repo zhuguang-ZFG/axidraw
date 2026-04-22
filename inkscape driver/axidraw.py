@@ -332,6 +332,15 @@ class AxiDraw(inkex.Effect):
         """Return a readable summary of current logical-to-physical XY mapping."""
         map_x = serial_utils._axis_map_out(self.plot_status, 1.0, 0.0)
         map_y = serial_utils._axis_map_out(self.plot_status, 0.0, 1.0)
+        origin = serial_utils._normalize_coordinate_origin(
+            getattr(self.plot_status, "grbl_coordinate_origin", "bottom_left"))
+        origin_label_map = {
+            "top_left": "左上",
+            "top_right": "右上",
+            "bottom_left": "左下",
+            "bottom_right": "右下",
+            "center": "中心",
+        }
 
         def _axis_label(mapped):
             x_val, y_val = mapped
@@ -340,15 +349,15 @@ class AxiDraw(inkex.Effect):
             return "机器 Y+" if y_val >= 0 else "机器 Y-"
 
         return (
-            f"逻辑 X+ -> {_axis_label(map_x)}，"
+            f"原点模式={origin_label_map.get(origin, origin)}；逻辑 X+ -> {_axis_label(map_x)}，"
             f"逻辑 Y+ -> {_axis_label(map_y)}"
         )
 
     def _describe_grbl_coordinate_model(self):
         """Return a short description of the active working-origin coordinate model."""
         if bool(getattr(self.plot_status, "grbl_xy_zeroed", False)):
-            return "当前坐标模型：以当前点作为工作原点 0,0；XY 对调/反转只改变逻辑轴投射到机器轴的方向，不会重写 G53 机器坐标。"
-        return "当前坐标模型：尚未把当前点设为工作原点；XY 对调/反转仅作用于工作坐标运动，G53 机器坐标不参与映射。"
+            return "当前坐标模型：以当前点作为工作原点 0,0；先按原点模式解释逻辑坐标方向，再叠加 X/Y 反转与对调；不会重写 G53 机器坐标。"
+        return "当前坐标模型：尚未把当前点设为工作原点；先按原点模式解释工作坐标方向，再叠加 X/Y 反转与对调；G53 机器坐标不参与映射。"
 
     def _grbl_auto_zero_on_connect_enabled(self):
         """Return whether connect should automatically set current XY as work origin."""
@@ -805,6 +814,9 @@ class AxiDraw(inkex.Effect):
         cmd = self.options.manual_cmd
         timeout_s = max(1.0, float(self.options.grbl_command_timeout))
         state_blocked = {"Run", "Hold", "Jog", "Home", "Check", "Door"}
+        jog_repeat = max(1, int(getattr(self.options, "manual_jog_repeat", 1) or 1))
+        auto_refresh = bool(getattr(self.options, "manual_auto_status_refresh", True))
+        jog_step_preset = str(getattr(self.options, "manual_jog_step_preset", "custom") or "custom").strip().lower()
 
         def _state_guard():
             status_line = serial_utils.grbl_query_status(self.plot_status, timeout_s=0.3)
@@ -815,6 +827,19 @@ class AxiDraw(inkex.Effect):
                         "Controller busy state: {0}. Please resume/idle before this command.").format(state))
                 return False
             return True
+
+        def _emit_status_snapshot():
+            positions = serial_utils.grbl_get_positions(self.plot_status, timeout_s=0.6)
+            self.user_message_fun(
+                f"状态: {positions['state'] or 'n/a'} | "
+                f"逻辑机械坐标(in): {positions['mpos'] or 'n/a'} | "
+                f"逻辑工作坐标(in): {positions['wpos'] or 'n/a'}")
+            self.user_message_fun(
+                f"物理机械坐标(in): {positions['mpos_phys'] or 'n/a'} | "
+                f"物理工作坐标(in): {positions['wpos_phys'] or 'n/a'}")
+            self.user_message_fun(self._describe_grbl_axis_mapping())
+            self.user_message_fun(self._describe_grbl_coordinate_model())
+            return positions
 
         if cmd == "ports_scan":
             ports = serial_utils.list_grbl_port_info()
@@ -879,16 +904,19 @@ class AxiDraw(inkex.Effect):
             return
 
         if cmd == "status_refresh":
-            positions = serial_utils.grbl_get_positions(self.plot_status, timeout_s=0.6)
-            self.user_message_fun(
-                f"状态: {positions['state'] or 'n/a'} | "
-                f"逻辑机械坐标(in): {positions['mpos'] or 'n/a'} | "
-                f"逻辑工作坐标(in): {positions['wpos'] or 'n/a'}")
-            self.user_message_fun(
-                f"物理机械坐标(in): {positions['mpos_phys'] or 'n/a'} | "
-                f"物理工作坐标(in): {positions['wpos_phys'] or 'n/a'}")
-            self.user_message_fun(self._describe_grbl_axis_mapping())
-            self.user_message_fun(self._describe_grbl_coordinate_model())
+            _emit_status_snapshot()
+            return
+
+        if cmd == "jog_stop":
+            ok_cancel = serial_utils.grbl_cancel_jog(self.plot_status, timeout_s=max(timeout_s, 1.0))
+            if not ok_cancel:
+                ok_hold = serial_utils.grbl_feed_hold(self.plot_status)
+                if not ok_hold:
+                    logger.error(gettext.gettext("Failed to stop current jog/motion."))
+                    return
+            self.user_message_fun(gettext.gettext("已发送停止点动命令。"))
+            if auto_refresh:
+                _emit_status_snapshot()
             return
 
         if cmd == "axis_apply":
@@ -919,6 +947,9 @@ class AxiDraw(inkex.Effect):
             if home_mask >= 0:
                 apply_ok &= serial_utils.grbl_write_setting(
                     self.plot_status, 23, home_mask, timeout_s)
+            self.plot_status.grbl_coordinate_origin = serial_utils._normalize_coordinate_origin(
+                getattr(self.options, "grbl_coordinate_origin",
+                        getattr(self.params, "grbl_coordinate_origin", "top_left")))
             self.plot_status.grbl_axis_swap_xy = bool(self.options.grbl_axis_swap_xy)
             self.plot_status.grbl_axis_invert_x = bool(self.options.grbl_axis_invert_x)
             self.plot_status.grbl_axis_invert_y = bool(self.options.grbl_axis_invert_y)
@@ -999,6 +1030,11 @@ class AxiDraw(inkex.Effect):
             if not _state_guard():
                 return
             dist_in = self.options.dist
+            if jog_step_preset != "custom":
+                try:
+                    dist_in = float(jog_step_preset)
+                except Exception:
+                    dist_in = self.options.dist
             if cmd in ("walk_mmx", "walk_mmy", "walk_mmx_pos", "walk_mmx_neg", "walk_mmy_pos", "walk_mmy_neg"):
                 dist_in = dist_in / 25.4
             if cmd in ("walk_mmx_neg", "walk_mmy_neg"):
@@ -1019,17 +1055,35 @@ class AxiDraw(inkex.Effect):
                 self.user_message_fun(gettext.gettext("点动目标超出行程，已忽略。"))
                 return
             speed_in_s = self.speed_penup if self.pen.phys.z_up else self.speed_pendown
-            ok, _lines = serial_utils.grbl_jog(
-                self.plot_status,
-                clipped_dx,
-                clipped_dy,
-                speed_in_s,
-                timeout_s=max(1.0, float(self.options.grbl_command_timeout)))
-            if not ok:
-                logger.error(gettext.gettext("Failed to execute Grbl jog command."))
-                return
-            self.pen.phys.xpos = target_x
-            self.pen.phys.ypos = target_y
+            if jog_repeat > 1:
+                self.user_message_fun(gettext.gettext(
+                    "连续点动：单次 {0:.3f} mm，重复 {1} 次。").format(dist_in * 25.4, jog_repeat))
+            current_target_x = current_x
+            current_target_y = current_y
+            for repeat_index in range(jog_repeat):
+                current_target_x = min(max(current_target_x + clipped_dx, self.bounds[0][0]), self.bounds[1][0])
+                current_target_y = min(max(current_target_y + clipped_dy, self.bounds[0][1]), self.bounds[1][1])
+                step_dx = current_target_x - (self.pen.phys.xpos if self.pen.phys.xpos is not None else current_x)
+                step_dy = current_target_y - (self.pen.phys.ypos if self.pen.phys.ypos is not None else current_y)
+                if abs(step_dx) < 1e-9 and abs(step_dy) < 1e-9:
+                    if repeat_index == 0:
+                        self.user_message_fun(gettext.gettext("连续点动已触发行程边界，停止继续发送。"))
+                    break
+                ok, _lines = serial_utils.grbl_jog(
+                    self.plot_status,
+                    step_dx,
+                    step_dy,
+                    speed_in_s,
+                    timeout_s=max(1.0, float(self.options.grbl_command_timeout)))
+                if not ok:
+                    logger.error(gettext.gettext("Failed to execute Grbl jog command."))
+                    return
+                self.pen.phys.xpos = current_target_x
+                self.pen.phys.ypos = current_target_y
+                if jog_repeat > 1:
+                    time.sleep(0.03)
+            if auto_refresh:
+                _emit_status_snapshot()
             return
 
         if cmd in ("bootload", "read_name", "write_name", "list_names"):

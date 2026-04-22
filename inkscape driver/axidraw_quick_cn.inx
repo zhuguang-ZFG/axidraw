@@ -35,41 +35,61 @@
 
 <page name="coords" gui-text="坐标系">
 <label appearance="header">坐标系设置</label>
-<label xml:space="preserve">这几个选项用于匹配你的控制器坐标方向。当前推荐默认值已经按你的设备预设好：反转 X 轴、对调 X/Y、原点左上。</label>
+<label xml:space="preserve">这里先选逻辑原点模式，再按需叠加 X/Y 反转和 XY 对调。当前推荐默认值已经按你的设备预设好：左上原点、反转 X、对调 X/Y。</label>
 <spacer />
 <param name="grbl_zero_xy_on_connect" type="bool" gui-text="连接后自动将当前位置设为工作原点">true</param>
+<param name="grbl_coordinate_origin" type="optiongroup" appearance="combo" gui-text="逻辑原点模式：">
+  <option value="top_left">左上</option>
+  <option value="top_right">右上</option>
+  <option value="bottom_left">左下</option>
+  <option value="bottom_right">右下</option>
+  <option value="center">中心</option>
+</param>
 <param name="grbl_axis_invert_x" type="bool" gui-text="反转 X 轴">true</param>
 <param name="grbl_axis_invert_y" type="bool" gui-text="反转 Y 轴">false</param>
 <param name="grbl_axis_swap_xy" type="bool" gui-text="对调 X 轴和 Y 轴">true</param>
-<label xml:space="preserve">默认推荐：先把当前位置设为左上角工作原点，再用“反转 X 轴 + 对调 X/Y”。这里是当前工作原点下的轴映射，不是整页镜像；手动点动、绘图和状态读取按同一套逻辑坐标解释，G53 机器坐标回原点不参与映射。</label>
+<label xml:space="preserve">默认推荐：先把当前位置设为工作原点，再用“左上原点 + 反转 X 轴 + 对调 X/Y”。手动点动、绘图和状态读取都按同一套逻辑坐标解释，G53 机器坐标回原点不参与映射。</label>
 <param name="auto_rotate" type="bool" gui-text="自动旋转页面">false</param>
-<label xml:space="preserve">起点位置：左上（LeftUp，0,0）。当前快速面板固定按左上原点工作。</label>
+<label xml:space="preserve">如果你的装机方向不同，可以优先改“逻辑原点模式”，再微调反转/对调开关。</label>
 </page>
 
 <page name="manual" gui-text="手动控制">
-<label appearance="header">手动控制</label>
-<label xml:space="preserve">进入本页后，只需要选一个动作，再点“应用”。常用操作都放在这里：点动、抬落笔、回工作原点、扫描串口、读取状态。</label>
+<label appearance="header">快速轴控</label>
+<label xml:space="preserve">这页优先放常用点动和原点操作；选一个动作再点“应用”。诊断项放后面，日常控制更顺手。</label>
 <spacer />
 <param name="manual_cmd" type="optiongroup" appearance="radio" gui-text="动作：">
-  <option value="fw_version">读取固件版本</option>
-  <option value="status_refresh">读取当前位置/状态（推荐）</option>
   <option value="walk_mmy_pos">Y+ 点动</option>
   <option value="walk_mmy_neg">Y- 点动</option>
   <option value="walk_mmx_neg">X- 点动</option>
   <option value="walk_mmx_pos">X+ 点动</option>
-  <option value="walk_home">回工作原点</option>
-  <option value="home_cycle">机械归位（$H）</option>
   <option value="raise_pen">Z 抬笔</option>
   <option value="lower_pen">Z 落笔</option>
+  <option value="jog_stop">停止当前点动/运动</option>
+  <option value="walk_home">回工作原点</option>
+  <option value="set_origin_here">将当前点设为原点</option>
   <option value="enable_xy">解锁/使能电机（$X）</option>
   <option value="disable_xy">失能电机</option>
+  <option value="status_refresh">读取当前位置/状态（推荐）</option>
+  <option value="home_cycle">机械归位（$H）</option>
   <option value="ports_scan">扫描串口列表</option>
   <option value="axis_read">读取 Grbl 轴设置</option>
-  <option value="set_origin_here">将当前点设为原点</option>
+  <option value="fw_version">读取固件版本</option>
   <option value="none">不执行动作</option>
+</param>
+<param name="manual_jog_step_preset" type="optiongroup" appearance="combo"
+gui-text="常用步距预设：">
+  <option value="1">1 mm（推荐）</option>
+  <option value="0.1">0.1 mm</option>
+  <option value="5">5 mm</option>
+  <option value="10">10 mm</option>
+  <option value="custom">自定义</option>
 </param>
 <param name="dist" type="float" precision="3" min="0.001" max="100000"
 gui-text="点动距离（mm）：">1.000</param>
+<param name="manual_jog_repeat" type="int" min="1" max="200"
+gui-text="连续点动次数：">1</param>
+<param name="manual_auto_status_refresh" type="bool" gui-text="点动后自动刷新坐标">true</param>
+<label xml:space="preserve">说明：步距预设不为“自定义”时，会优先使用预设值；连续点动仍然属于插件内“连发小步 jog”，不是独立程序那种按住实时控制，但会比单次点动顺手很多。</label>
 </page>
 
 <page name="res_plot" gui-text="继续绘图">
@@ -164,6 +184,7 @@ gui-text="点动距离（mm）：">1.000</param>
 <param name="grbl_auto_fetch" type="bool" gui-hidden="true">true</param>
 <param name="grbl_command_timeout" type="float" gui-hidden="true">2.0</param>
 <param name="pen_change_prompt" type="bool" gui-hidden="true">true</param>
+<param name="grbl_coordinate_origin" type="string" gui-hidden="true">top_left</param>
 <param name="grbl_pen_down_slow_feed" type="float" gui-hidden="true">0.0</param>
 <param name="grbl_pen_down_settle_ms" type="int" gui-hidden="true">0</param>
 <param name="grbl_set_dir_mask" type="int" gui-hidden="true">-1</param>
