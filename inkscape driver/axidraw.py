@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2023 Windell H. Oskay, Evil Mad Scientist Laboratories
 #
 # This program is free software; you can redistribute it and/or modify
@@ -277,6 +278,43 @@ class AxiDraw(inkex.Effect):
         }
         return presets.get(mode, presets["standard"])
 
+    def _plotter_path_opt_settings(self):
+        """Return path cleanup thresholds for the current plotter optimization mode."""
+        mode = str(getattr(
+            self.options,
+            "grbl_path_optim_mode",
+            getattr(self.params, "grbl_path_optim_mode", "standard")) or "standard")
+        mode = mode.strip().lower()
+        base_near = max(float(getattr(self.params, "grbl_near_dist", self.params.min_gap)), 0.0)
+        base_simple = max(float(getattr(self.params, "grbl_simple_path_tolerance", 0.0)), 0.0)
+        presets = {
+            "off": {
+                "mode": "off",
+                "near_dist": max(min(base_near, self.params.min_gap), 0.0),
+                "simple_path_tolerance": 0.0,
+                "label": "\u5173\u95ed\u989d\u5916\u6e05\u7406",
+            },
+            "conservative": {
+                "mode": "conservative",
+                "near_dist": base_near * 0.75,
+                "simple_path_tolerance": base_simple * 0.5,
+                "label": "\u4fdd\u5b88",
+            },
+            "standard": {
+                "mode": "standard",
+                "near_dist": base_near,
+                "simple_path_tolerance": base_simple,
+                "label": "\u6807\u51c6",
+            },
+            "aggressive": {
+                "mode": "aggressive",
+                "near_dist": base_near * 1.45,
+                "simple_path_tolerance": base_simple * 1.75,
+                "label": "\u6fc0\u8fdb",
+            },
+        }
+        return presets.get(mode, presets["standard"])
+
     def _describe_grbl_axis_mapping(self):
         """Return a readable summary of current logical-to-physical XY mapping."""
         map_x = serial_utils._axis_map_out(self.plot_status, 1.0, 0.0)
@@ -312,6 +350,42 @@ class AxiDraw(inkex.Effect):
             self.options,
             "grbl_return_to_origin_after_plot",
             getattr(self.params, "grbl_return_to_origin_after_plot", True)))
+
+    def _grbl_stream_flush_interval(self):
+        """Return how many streamed pen-down segments to queue before flushing."""
+        return max(8, int(getattr(self.params, "grbl_stream_flush_interval", 96)))
+
+    def _grbl_long_path_log_threshold(self):
+        """Return vertex count above which we log sender-side long-path chunking."""
+        return max(256, int(getattr(self.params, "grbl_stream_log_long_path_vertices", 1500)))
+
+    def _grbl_path_chunk_vertices(self):
+        """Return maximum vertices per continuous Grbl polyline chunk."""
+        return max(64, int(getattr(self.params, "grbl_path_chunk_vertices", 480)))
+
+    def _iter_polyline_chunks(self, vertex_list):
+        """
+        Yield overlapping polyline chunks without changing drawing continuity.
+
+        Each yielded chunk reuses the previous chunk's last vertex as its first vertex,
+        so Grbl can continue the same pen-down stroke without adding a pen lift.
+        """
+        if len(vertex_list) <= 2:
+            yield vertex_list
+            return
+        chunk_limit = self._grbl_path_chunk_vertices()
+        if len(vertex_list) <= chunk_limit:
+            yield vertex_list
+            return
+
+        start_index = 0
+        last_index = len(vertex_list) - 1
+        while start_index < last_index:
+            end_index = min(start_index + chunk_limit - 1, last_index)
+            yield vertex_list[start_index:end_index + 1]
+            if end_index >= last_index:
+                break
+            start_index = end_index
 
 
     def effect(self):
@@ -1072,12 +1146,13 @@ class AxiDraw(inkex.Effect):
                 self.params.segment_supersample_tolerance)
 
             if self.options.controller == "grbl_esp32":
+                plotter_opt_cfg = self._plotter_path_opt_settings()
                 optimize_stats = plot_optimizations.optimize_digest_for_plotter(
                     self.digest,
                     self.params.grbl_min_segment,
                     self.params.grbl_collinear_tolerance,
-                    getattr(self.params, "grbl_near_dist", self.params.min_gap),
-                    getattr(self.params, "grbl_simple_path_tolerance", 0.0),
+                    plotter_opt_cfg["near_dist"],
+                    plotter_opt_cfg["simple_path_tolerance"],
                     allow_reverse)
                 if (
                         optimize_stats["vertices_removed"] > 0 or
@@ -1560,28 +1635,60 @@ class AxiDraw(inkex.Effect):
         if self.plot_status.stopped:
             return
         timeout_s = max(4.0, float(getattr(self.options, "grbl_command_timeout", 2.0)) * 3.0)
-        for vertex in vertex_list[1:]:
-            x_dest = vertex[0]
-            y_dest = vertex[1]
-            current_x = self.pen.phys.xpos if self.pen.phys.xpos is not None else x_dest
-            current_y = self.pen.phys.ypos if self.pen.phys.ypos is not None else y_dest
-            move_dist = plot_utils.distance(x_dest - current_x, y_dest - current_y)
-            ok, _lines = serial_utils.grbl_queue_linear(
-                self.plot_status,
-                x_dest,
-                y_dest,
-                self.speed_pendown,
-                rapid=False,
-                timeout_s=timeout_s)
-            if not ok:
+        flush_interval = self._grbl_stream_flush_interval()
+        queued_segments = 0
+        chunk_vertex_limit = self._grbl_path_chunk_vertices()
+        chunk_count = max(1, math.ceil((len(vertex_list) - 1) / max(1, chunk_vertex_limit - 1)))
+        if (
+                len(vertex_list) >= self._grbl_long_path_log_threshold() and
+                not getattr(self.plot_status, "secondary", False)
+        ):
+            self.user_message_fun(gettext.gettext(
+                "检测到超长单路径，已启用连续切块发送：{0} 个顶点，拆为 {1} 块，每块最多 {2} 个顶点；每 {3} 段冲刷一次发送缓冲。").format(
+                    len(vertex_list), chunk_count, chunk_vertex_limit, flush_interval))
+        for chunk_vertices in self._iter_polyline_chunks(vertex_list):
+            for vertex in chunk_vertices[1:]:
+                x_dest = vertex[0]
+                y_dest = vertex[1]
+                current_x = self.pen.phys.xpos if self.pen.phys.xpos is not None else x_dest
+                current_y = self.pen.phys.ypos if self.pen.phys.ypos is not None else y_dest
+                move_dist = plot_utils.distance(x_dest - current_x, y_dest - current_y)
+                ok, _lines = serial_utils.grbl_queue_linear(
+                    self.plot_status,
+                    x_dest,
+                    y_dest,
+                    self.speed_pendown,
+                    rapid=False,
+                    timeout_s=timeout_s)
+                if not ok:
+                    self.plot_status.stopped = 104
+                    self.user_message_fun(gettext.gettext(
+                        "Grbl motion stream failed; plotting was stopped."))
+                    return
+                self.plot_status.stats.add_dist(False, move_dist)
+                self.plot_status.progress.update_auto(self.plot_status.stats)
+                self.pen.phys.xpos = x_dest
+                self.pen.phys.ypos = y_dest
+                queued_segments += 1
+                if queued_segments >= flush_interval:
+                    if not serial_utils.grbl_flush_motion(
+                            self.plot_status,
+                            timeout_s=max(8.0, timeout_s),
+                            wait_idle=False):
+                        self.plot_status.stopped = 104
+                        self.user_message_fun(gettext.gettext(
+                            "Grbl motion stream flush failed; plotting was stopped."))
+                        return
+                    queued_segments = 0
+            if not serial_utils.grbl_flush_motion(
+                    self.plot_status,
+                    timeout_s=max(8.0, timeout_s),
+                    wait_idle=False):
                 self.plot_status.stopped = 104
                 self.user_message_fun(gettext.gettext(
-                    "Grbl motion stream failed; plotting was stopped."))
+                    "Grbl motion chunk flush failed; plotting was stopped."))
                 return
-            self.plot_status.stats.add_dist(False, move_dist)
-            self.plot_status.progress.update_auto(self.plot_status.stats)
-            self.pen.phys.xpos = x_dest
-            self.pen.phys.ypos = y_dest
+            queued_segments = 0
         serial_utils.grbl_flush_motion(self.plot_status, timeout_s=max(15.0, timeout_s), wait_idle=False)
         self.pen.pen_raise(self)
 

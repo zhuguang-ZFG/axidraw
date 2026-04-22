@@ -111,11 +111,15 @@ grbl_min_segment = 0.0012 # Drop consecutive segments shorter than this length (
 grbl_collinear_tolerance = 0.0008 # Merge nearly-collinear middle vertices within this error (inches)
 grbl_near_dist = 0.012 # Prefer connecting/reordering paths with pen-up gaps shorter than this distance (inches)
 grbl_simple_path_tolerance = 0.02 # Remove trivially short flattened paths shorter than this distance (inches)
+grbl_path_optim_mode = 'standard' # off / conservative / standard / aggressive
 auto_sparse_linework = True # If True, automatically thin dense parallel line-only artwork.
 auto_sparse_line_mode = 'standard' # off / conservative / standard / aggressive
 auto_sparse_line_threshold = 0.0035 # Maximum median spacing (inches) considered "dense" for auto sparsify.
 auto_sparse_line_min_count = 2000 # Minimum 2-point path count before linework sparsify is considered.
 auto_sparse_line_min_run = 12 # Minimum dense run length before alternating lines are removed.
+grbl_stream_flush_interval = 96 # Flush queued Grbl motion after this many pen-down segments to reduce long-path stutter.
+grbl_stream_log_long_path_vertices = 1500 # Emit one sender-side long-path log when a polyline exceeds this many vertices.
+grbl_path_chunk_vertices = 480 # Split one very long polyline into continuous streaming chunks of at most this many vertices.
 grbl_set_dir_mask = -1 # If >=0, write this value to Grbl $3 in axis_apply mode
 grbl_set_homing_dir_mask = -1 # If >=0, write this value to Grbl $23 in axis_apply mode
 grbl_dir_invert_x = False # In axis_apply mode, include X bit in $3 mask

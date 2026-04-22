@@ -236,6 +236,10 @@ def core_options(config):
                         type=str, action="store", dest="auto_sparse_line_mode",\
                         default=config.get("auto_sparse_line_mode", "standard"),\
                         help="Dense linework thinning mode: off/conservative/standard/aggressive.")
+    options.add_argument("--grbl_path_optim_mode",\
+                        type=str, action="store", dest="grbl_path_optim_mode",\
+                        default=config.get("grbl_path_optim_mode", "standard"),\
+                        help="Plotter path cleanup mode: off/conservative/standard/aggressive.")
 
     options.add_argument("--setup_type",\
                         type=str, action="store", dest="setup_type",\

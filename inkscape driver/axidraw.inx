@@ -86,6 +86,12 @@
         <option value="2">高，允许反向重排</option>
         <option value="4">关闭，严格保持原顺序</option>
       </param>
+      <param name="grbl_path_optim_mode" type="optiongroup" appearance="combo" gui-text="绘图机路径优化档位：">
+        <option value="conservative">保守</option>
+        <option value="standard">标准</option>
+        <option value="aggressive">激进</option>
+        <option value="off">关闭额外清理</option>
+      </param>
       <param name="random_start" type="bool" gui-text="闭合路径起点随机化">false</param>
       <param name="resolution" type="optiongroup" appearance="combo" gui-text="电机分辨率：">
         <option value="1">高分辨率，更平滑</option>
@@ -111,7 +117,7 @@
         <option value="off">关闭</option>
       </param>
       <param name="hiding" type="bool" gui-text="隐藏线去除">false</param>
-      <label>说明：当前默认是先缩放适配机器行程，再对密排线稿做自动降级，最后保留越界裁切保护。</label>
+      <label>说明：当前默认是先缩放适配机器行程，再做绘图机路径清理与重排，对密排线稿做自动降级，最后保留越界裁切保护。</label>
       <spacer />
       <label appearance="header">坐标映射</label>
       <label xml:space="preserve">当前推荐默认：先把当前位置设为左上角工作原点，再配合“反转 X 轴 + 对调 X/Y”。这里是“当前工作原点下的轴映射”，不是整页镜像；普通绘图与手动点动会使用同一套映射，机器坐标回原点（G53）不受这里影响。</label>

@@ -234,6 +234,7 @@ class AxiDrawWrapperClass( inkex.Effect ):
             'manual_pen_change', 'auto_pause_between_layers',
             'pen_change_to_home', 'pen_change_prompt',
             'bounds_auto_scale', 'bounds_auto_scale_prompt',
+            'grbl_path_optim_mode',
             'grbl_axis_swap_xy', 'grbl_axis_invert_x', 'grbl_axis_invert_y',
             'grbl_set_dir_mask', 'grbl_set_homing_dir_mask',
             'grbl_dir_invert_x', 'grbl_dir_invert_y', 'grbl_dir_invert_z',
