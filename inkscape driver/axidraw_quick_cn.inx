@@ -56,6 +56,7 @@
 <page name="manual" gui-text="手动控制">
 <label appearance="header">快速轴控</label>
 <label xml:space="preserve">这页优先放常用点动和原点操作；选一个动作再点“应用”。诊断项放后面，日常控制更顺手。</label>
+<label>前面是日常控制项；靠后的“读取状态/扫描串口/读取轴设置/读固件”属于诊断项。</label>
 <spacer />
 <param name="manual_cmd" type="optiongroup" appearance="radio" gui-text="动作：">
   <option value="walk_mmy_pos">Y+ 点动</option>
@@ -71,6 +72,7 @@
   <option value="disable_xy">失能电机</option>
   <option value="status_refresh">读取当前位置/状态（推荐）</option>
   <option value="home_cycle">机械归位（$H）</option>
+  <option value="sync_canvas_to_machine">读取机器行程并更新画布且等比缩放整图</option>
   <option value="ports_scan">扫描串口列表</option>
   <option value="axis_read">读取 Grbl 轴设置</option>
   <option value="fw_version">读取固件版本</option>

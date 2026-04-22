@@ -853,6 +853,10 @@ class AxiDraw(inkex.Effect):
                 self.user_message_fun("No serial ports detected.")
             return
 
+        if cmd == "sync_canvas_to_machine":
+            self._sync_canvas_to_machine_travel()
+            return
+
         if cmd in ("raise_pen", "lower_pen"):
             if not _state_guard():
                 return
@@ -1554,15 +1558,100 @@ class AxiDraw(inkex.Effect):
             return None
         return min_x, min_y, max_x, max_y
 
+    def _sync_canvas_to_machine_travel(self):
+        """Update SVG canvas to machine travel and uniformly fit the drawing to that canvas."""
+        self.svg = self.document.getroot()
+        self.plot_status.grbl_settings = serial_utils.read_grbl_settings(
+            self.plot_status,
+            timeout_s=max(1.5, float(getattr(self.options, "grbl_command_timeout", 2.0)) * 1.5))
+        serial_utils.apply_grbl_settings_to_params(self.plot_status, self.params)
+
+        x_max_mm = self.plot_status.grbl_settings.get(130)
+        y_max_mm = self.plot_status.grbl_settings.get(131)
+        if not isinstance(x_max_mm, (int, float)) or not isinstance(y_max_mm, (int, float)):
+            logger.error(gettext.gettext("未能从固件读取到有效的 X/Y 物理行程。"))
+            return
+        if x_max_mm <= 0 or y_max_mm <= 0:
+            logger.error(gettext.gettext("固件返回的物理行程无效，无法更新画布。"))
+            return
+
+        if not self.get_doc_props():
+            logger.error(gettext.gettext("当前文档尺寸无效，无法按机器行程更新画布。"))
+            return
+
+        old_width_mm = self.svg_width * 25.4
+        old_height_mm = self.svg_height * 25.4
+        if old_width_mm <= 0 or old_height_mm <= 0:
+            logger.error(gettext.gettext("当前画布尺寸无效，无法更新画布。"))
+            return
+
+        current_viewbox = self.svg.get("viewBox")
+        if current_viewbox:
+            try:
+                parts = [float(part) for part in current_viewbox.replace(",", " ").split()]
+            except Exception:
+                parts = []
+            if len(parts) == 4:
+                vb_min_x, vb_min_y, vb_width, vb_height = parts
+            else:
+                vb_min_x, vb_min_y, vb_width, vb_height = 0.0, 0.0, old_width_mm, old_height_mm
+        else:
+            vb_min_x = 0.0
+            vb_min_y = 0.0
+            vb_width = self.svg_width * float(plot_utils.PX_PER_INCH)
+            vb_height = self.svg_height * float(plot_utils.PX_PER_INCH)
+
+        if vb_width <= 0 or vb_height <= 0:
+            logger.error(gettext.gettext("当前 viewBox 无效，无法更新画布。"))
+            return
+
+        scale_factor = min(x_max_mm / old_width_mm, y_max_mm / old_height_mm)
+        if scale_factor <= 0:
+            logger.error(gettext.gettext("计算整图适配比例失败。"))
+            return
+
+        old_phys_scale_x = old_width_mm / vb_width
+        old_phys_scale_y = old_height_mm / vb_height
+        new_vb_width = x_max_mm / max(old_phys_scale_x * scale_factor, 1e-9)
+        new_vb_height = y_max_mm / max(old_phys_scale_y * scale_factor, 1e-9)
+
+        self.svg.set("width", f"{x_max_mm:.3f}mm")
+        self.svg.set("height", f"{y_max_mm:.3f}mm")
+        self.svg.set("viewBox", f"{vb_min_x:.6f} {vb_min_y:.6f} {new_vb_width:.6f} {new_vb_height:.6f}")
+
+        namedview = self.svg.xpath('//sodipodi:namedview', namespaces=inkex.NSS)
+        if namedview:
+            try:
+                namedview[0].set('document-units', 'mm')
+            except Exception:
+                pass
+
+        self.user_message_fun(gettext.gettext(
+            "已按机器物理行程更新画布，并按当前画布坐标等比适配整图。"))
+        self.user_message_fun(gettext.gettext(
+            "机器行程：X={0:.3f} mm, Y={1:.3f} mm；整图等比系数：{2:.3f}。").format(
+                x_max_mm, y_max_mm, scale_factor))
+        if scale_factor < 0.999:
+            self.user_message_fun(gettext.gettext(
+                "当前整图已缩小以适配机器画布；若某一边仍留白，这是为了避免非等比拉伸。"))
+        elif scale_factor > 1.001:
+            self.user_message_fun(gettext.gettext(
+                "当前整图已随画布放大到更接近机器工作区。"))
+        else:
+            self.user_message_fun(gettext.gettext(
+                "当前整图与机器画布比例接近，无需明显缩放。"))
+
     def _confirm_bounds_auto_scale(self, scale_factor):
         """Prompt user to approve automatic scaling into travel bounds."""
         prompt_text = gettext.gettext(
-            f"Detected out-of-bounds drawing. Auto-scale to fit travel area "
-            f"(scale {scale_factor:.3f}) and continue?")
+            f"检测到整图超出机器行程。\n"
+            f"建议先自动缩放整图后再继续绘图。\n"
+            f"本次缩放系数：{scale_factor:.3f}\n"
+            f"选择“是”将自动缩放后继续；选择“否”则取消本次绘图。")
         if self.plot_status.cli_api:
             self.user_message_fun(prompt_text)
             try:
-                user_reply = input("Apply auto-scale and continue? [y/N]: ").strip().lower()
+                user_reply = input("是否自动缩放整图并继续？[y/N]: ").strip().lower()
             except EOFError:
                 return False
             return user_reply in ("y", "yes")
@@ -1579,7 +1668,7 @@ class AxiDraw(inkex.Effect):
                 root.update_idletasks()
             except Exception:
                 pass
-            result = messagebox.askyesno("AxiDraw Bounds Warning", prompt_text)
+            result = messagebox.askyesno("绘图越界提示", prompt_text)
             root.destroy()
             return result
         except Exception:
@@ -1615,7 +1704,7 @@ class AxiDraw(inkex.Effect):
         self.digest.width = self.digest.width * scale_factor
         self.digest.height = self.digest.height * scale_factor
         self.user_message_fun(gettext.gettext(
-            f"Applied auto-scale factor {scale_factor:.3f} to fit machine travel bounds."))
+            f"已自动缩放整图以适配机器行程，缩放系数 {scale_factor:.3f}。"))
         return True
 
     def plot_polyline(self, vertex_list):

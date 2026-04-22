@@ -332,7 +332,7 @@ def core_mode_options(config):
                         + "walk_x, walk_y, walk_mmx, walk_mmy, walk_mmx_pos, walk_mmx_neg, "\
                         + "walk_mmy_pos, walk_mmy_neg, jog_stop, walk_home, enable_xy, "\
                         + "disable_xy, axis_read, axis_apply, status_refresh, home_cycle, ports_scan, "\
-                        + "res_read, res_adj_in, res_adj_mm, strip_data]. Default: fw_version")
+                        + "sync_canvas_to_machine, res_read, res_adj_in, res_adj_mm, strip_data]. Default: fw_version")
 
     options.add_argument("--dist", "--walk_dist",\
                         type=float, action="store", dest="dist",\
