@@ -487,24 +487,16 @@ class AxiDraw(inkex.Effect):
 
         elif self.options.mode  == "res_home":
             self.plot_status.resume.copy_old()
-            self.pen.phys.xpos = self.plot_status.resume.old.last_x
-            self.pen.phys.ypos = self.plot_status.resume.old.last_y
             self.plot_status.resume.update_needed = True
-
-            if not self.plot_status.resume.read:
-                logger.error(gettext.gettext("No resume data found; unable to return Home."))
-                return
-            if (math.fabs(self.pen.phys.xpos < 0.001) and
-                    math.fabs(self.pen.phys.ypos < 0.001)):
-                logger.error(gettext.gettext(\
-                    "Unable to move to Home. (Is the AxiDraw already at Home?)"))
-                return
 
             self.query_ebb_voltage()
             self.pen.servo_init(self)
             self.pen.pen_raise(self)
             self.enable_motors()
-            self.go_to_position(self.params.start_pos_x, self.params.start_pos_y)
+            self.go_to_parking_position(wait_for_completion=True)
+            self.plot_status.resume.new.clean()
+            self.plot_cleanup()
+            return
 
         if self.plot_status.resume.update_needed:
             self.plot_status.resume.new.last_x = self.pen.phys.xpos
@@ -807,21 +799,50 @@ class AxiDraw(inkex.Effect):
         if cmd == "walk_home":
             if not _state_guard():
                 return
-            park_x, park_y = self._origin_target_xy()
             ok_mode, _lines = serial_utils.grbl_send(
                 self.plot_status, "G90", expect_ok=True, timeout_s=timeout_s)
-            ok_move, _lines = serial_utils.grbl_move_linear(
-                self.plot_status,
-                park_x,
-                park_y,
-                feed_in_s=max(self.speed_penup, 0.2),
-                rapid=True,
-                timeout_s=max(timeout_s, 3.0))
+            saved_origin = getattr(self.plot_status, "grbl_saved_origin_phys_in", None)
+            if saved_origin is not None:
+                park_x, park_y = saved_origin
+                self.user_message_fun(
+                    gettext.gettext("正在回到已保存原点（机器坐标）：X={0:.3f}, Y={1:.3f}").format(
+                        park_x, park_y))
+                ok_move, _lines = serial_utils.grbl_move_machine_linear(
+                    self.plot_status,
+                    park_x,
+                    park_y,
+                    rapid=True,
+                    timeout_s=max(timeout_s, 3.0))
+                self.pen.phys.xpos = 0.0
+                self.pen.phys.ypos = 0.0
+            else:
+                park_x, park_y = self._origin_target_xy()
+                ok_move, _lines = serial_utils.grbl_move_linear(
+                    self.plot_status,
+                    park_x,
+                    park_y,
+                    feed_in_s=max(self.speed_penup, 0.2),
+                    rapid=True,
+                    timeout_s=max(timeout_s, 3.0))
+                self.pen.phys.xpos = park_x
+                self.pen.phys.ypos = park_y
             if not (ok_mode and ok_move):
                 logger.error(gettext.gettext("Failed to execute walk_home in Grbl mode."))
                 return
-            self.pen.phys.xpos = park_x
-            self.pen.phys.ypos = park_y
+            return
+
+        if cmd == "set_origin_here":
+            if not _state_guard():
+                return
+            self._capture_grbl_origin_snapshot(timeout_s)
+            ok_zero, _lines = serial_utils.grbl_send(
+                self.plot_status, "G92 X0 Y0", expect_ok=True, timeout_s=timeout_s)
+            if not ok_zero:
+                logger.error(gettext.gettext("Failed to set the current point as origin."))
+                return
+            self.pen.phys.xpos = 0.0
+            self.pen.phys.ypos = 0.0
+            self.user_message_fun(gettext.gettext("已将当前点设置为原点。"))
             return
 
         if cmd == "home_cycle":
@@ -1000,15 +1021,23 @@ class AxiDraw(inkex.Effect):
                 self.params.segment_supersample_tolerance)
 
             if self.options.controller == "grbl_esp32":
-                optimize_stats = plot_optimizations.optimize_digest_for_grbl(
+                optimize_stats = plot_optimizations.optimize_digest_for_plotter(
                     self.digest,
                     self.params.grbl_min_segment,
-                    self.params.grbl_collinear_tolerance)
-                if optimize_stats["vertices_removed"] > 0 and not self.plot_status.secondary:
+                    self.params.grbl_collinear_tolerance,
+                    getattr(self.params, "grbl_near_dist", self.params.min_gap),
+                    getattr(self.params, "grbl_simple_path_tolerance", 0.0),
+                    allow_reverse)
+                if (
+                        optimize_stats["vertices_removed"] > 0 or
+                        optimize_stats["paths_removed"] > 0 or
+                        optimize_stats["paths_before_join"] > optimize_stats["paths_after_join"]
+                ) and not self.plot_status.secondary:
                     self.user_message_fun(gettext.gettext(
-                        "路径优化已移除 {0} 个冗余节点，涉及 {1} 条路径。").format(
+                        "路径优化：移除 {0} 个冗余节点，清理 {1} 条极短路径，合并 {2} 条近邻路径。").format(
                             optimize_stats["vertices_removed"],
-                            optimize_stats["paths_touched"]))
+                            optimize_stats["paths_removed"],
+                            max(0, optimize_stats["paths_before_join"] - optimize_stats["paths_after_join"])))
                 sparse_cfg = self._auto_sparse_settings()
                 if sparse_cfg["enabled"]:
                     sparse_stats = plot_optimizations.auto_sparse_linework(
@@ -1408,6 +1437,10 @@ class AxiDraw(inkex.Effect):
         # Pen up straight move, zero velocity at endpoints, to first vertex location
         self.go_to_position(vertex_list[0][0], vertex_list[0][1])
 
+        if serial_utils.is_grbl(self.plot_status) and not self.options.preview:
+            self._plot_polyline_grbl(vertex_list)
+            return
+
         # Plan and feed trajectory, including lowering and raising pen before and after:
         the_trajectory = motion.trajectory(self, vertex_list)
         dripfeed.feed(self, the_trajectory[0])
@@ -1417,9 +1450,74 @@ class AxiDraw(inkex.Effect):
         Immediate XY move to destination, using normal motion planning. Replaces legacy
         function "plot_seg_with_v", assuming zero initial and final velocities.
         '''
+        if serial_utils.is_grbl(self.plot_status) and not self.options.preview:
+            self._go_to_position_grbl(x_dest, y_dest, ignore_limits=ignore_limits)
+            return
         target_data = (x_dest, y_dest, 0, 0, ignore_limits)
         the_trajectory = motion.compute_segment(self, target_data, xyz_pos)
         dripfeed.feed(self, the_trajectory[0])
+
+    def _go_to_position_grbl(self, x_dest, y_dest, ignore_limits=False):
+        """Direct Grbl move without EBB-style micro-segmentation."""
+        if self.plot_status.stopped:
+            return
+        if not ignore_limits:
+            x_dest, _ = plot_utils.checkLimitsTol(x_dest, 0, self.bounds[1][0], 2e-9)
+            y_dest, _ = plot_utils.checkLimitsTol(y_dest, 0, self.bounds[1][1], 2e-9)
+        current_x = self.pen.phys.xpos if self.pen.phys.xpos is not None else x_dest
+        current_y = self.pen.phys.ypos if self.pen.phys.ypos is not None else y_dest
+        move_dist = plot_utils.distance(x_dest - current_x, y_dest - current_y)
+        rapid = bool(self.pen.phys.z_up)
+        speed_in_s = self.speed_penup if rapid else self.speed_pendown
+        ok, _lines = serial_utils.grbl_move_linear(
+            self.plot_status,
+            x_dest,
+            y_dest,
+            feed_in_s=max(speed_in_s, 0.2),
+            rapid=rapid,
+            timeout_s=max(4.0, float(getattr(self.options, "grbl_command_timeout", 2.0)) * 3.0))
+        if not ok:
+            self.plot_status.stopped = 104
+            self.user_message_fun(gettext.gettext(
+                "Grbl direct motion command failed; plotting was stopped."))
+            return
+        self.plot_status.stats.add_dist(bool(self.pen.phys.z_up), move_dist)
+        self.plot_status.progress.update_auto(self.plot_status.stats)
+        self.pen.phys.xpos = x_dest
+        self.pen.phys.ypos = y_dest
+
+    def _plot_polyline_grbl(self, vertex_list):
+        """Plot one polyline by streaming direct G-code vertices to Grbl."""
+        if self.plot_status.stopped or len(vertex_list) < 2:
+            return
+        self.pen.pen_lower(self)
+        if self.plot_status.stopped:
+            return
+        timeout_s = max(4.0, float(getattr(self.options, "grbl_command_timeout", 2.0)) * 3.0)
+        for vertex in vertex_list[1:]:
+            x_dest = vertex[0]
+            y_dest = vertex[1]
+            current_x = self.pen.phys.xpos if self.pen.phys.xpos is not None else x_dest
+            current_y = self.pen.phys.ypos if self.pen.phys.ypos is not None else y_dest
+            move_dist = plot_utils.distance(x_dest - current_x, y_dest - current_y)
+            ok, _lines = serial_utils.grbl_queue_linear(
+                self.plot_status,
+                x_dest,
+                y_dest,
+                self.speed_pendown,
+                rapid=False,
+                timeout_s=timeout_s)
+            if not ok:
+                self.plot_status.stopped = 104
+                self.user_message_fun(gettext.gettext(
+                    "Grbl motion stream failed; plotting was stopped."))
+                return
+            self.plot_status.stats.add_dist(False, move_dist)
+            self.plot_status.progress.update_auto(self.plot_status.stats)
+            self.pen.phys.xpos = x_dest
+            self.pen.phys.ypos = y_dest
+        serial_utils.grbl_flush_motion(self.plot_status, timeout_s=max(15.0, timeout_s), wait_idle=False)
+        self.pen.pen_raise(self)
 
     def _parking_target_xy(self):
         """Return logical XY target for parking/home motion."""
@@ -1438,26 +1536,66 @@ class AxiDraw(inkex.Effect):
 
         physical_x = 0.0
         physical_y = max(float(getattr(self.params, "y_travel_default", self.bounds[1][1])), 0.0)
+        return serial_utils._axis_map_in(self.plot_status, physical_x, physical_y)
 
-        swap_xy = bool(getattr(self.plot_status, "grbl_axis_swap_xy", getattr(self.params, "grbl_axis_swap_xy", False)))
-        invert_x = bool(getattr(self.plot_status, "grbl_axis_invert_x", getattr(self.params, "grbl_axis_invert_x", False)))
-        invert_y = bool(getattr(self.plot_status, "grbl_axis_invert_y", getattr(self.params, "grbl_axis_invert_y", False)))
-
-        logical_x = -physical_x if invert_x else physical_x
-        logical_y = -physical_y if invert_y else physical_y
-        if swap_xy:
-            logical_x, logical_y = logical_y, logical_x
-        return logical_x, logical_y
+    def _capture_grbl_origin_snapshot(self, timeout_s):
+        """Capture both machine and work coordinate snapshots for origin/home actions."""
+        origin_positions = serial_utils.grbl_get_positions(
+            self.plot_status, timeout_s=min(timeout_s, 0.8))
+        self.plot_status.grbl_saved_origin_phys_in = origin_positions.get("mpos_phys")
+        self.plot_status.grbl_saved_origin_work_in = origin_positions.get("wpos")
+        self.plot_status.grbl_saved_origin_xy = origin_positions.get("mpos_phys")
+        return origin_positions
 
     def go_to_parking_position(self, wait_for_completion=True):
         """Move to configured parking/home position and optionally wait until motion completes."""
         park_x, park_y = self._parking_target_xy()
-        self.go_to_position(park_x, park_y)
-        if wait_for_completion and serial_utils.is_grbl(self.plot_status) and not self.options.preview:
-            serial_utils.grbl_flush_motion(
+        if serial_utils.is_grbl(self.plot_status) and not self.options.preview:
+            timeout_s = max(5.0, float(getattr(self.options, "grbl_command_timeout", 2.0)) * 4.0)
+            self.user_message_fun(
+                gettext.gettext(
+                    "正在回到原点：X={0:.3f}, Y={1:.3f}").format(park_x, park_y))
+            ok_mode, mode_lines = serial_utils.grbl_send(
                 self.plot_status,
-                timeout_s=max(5.0, float(getattr(self.options, "grbl_command_timeout", 2.0)) * 4.0),
-                wait_idle=True)
+                "G90",
+                expect_ok=True,
+                timeout_s=timeout_s)
+            if getattr(self.plot_status, "grbl_saved_origin_phys_in", None) is not None:
+                saved_x, saved_y = self.plot_status.grbl_saved_origin_phys_in
+                self.user_message_fun(
+                    gettext.gettext(
+                        "正在回到已保存原点（机器坐标）：X={0:.3f}, Y={1:.3f}").format(
+                            saved_x, saved_y))
+                ok, move_lines = serial_utils.grbl_move_machine_linear(
+                    self.plot_status,
+                    saved_x,
+                    saved_y,
+                    rapid=True,
+                    timeout_s=timeout_s)
+            else:
+                ok, move_lines = serial_utils.grbl_move_linear(
+                    self.plot_status,
+                    park_x,
+                    park_y,
+                    feed_in_s=max(self.speed_penup, 0.2),
+                    rapid=True,
+                    timeout_s=timeout_s)
+            if ok_mode and ok:
+                self.pen.phys.xpos = park_x
+                self.pen.phys.ypos = park_y
+                if wait_for_completion:
+                    serial_utils.grbl_wait_idle(self.plot_status, timeout_s=timeout_s)
+            else:
+                self.user_message_fun(gettext.gettext(
+                    "回原点动作发送失败。G90={0} {1}; MOVE={2} {3}").format(
+                        ok_mode, mode_lines, ok, move_lines))
+        else:
+            self.go_to_position(park_x, park_y)
+            if wait_for_completion and serial_utils.is_grbl(self.plot_status) and not self.options.preview:
+                serial_utils.grbl_flush_motion(
+                    self.plot_status,
+                    timeout_s=max(5.0, float(getattr(self.options, "grbl_command_timeout", 2.0)) * 4.0),
+                    wait_idle=True)
 
     def pause_check(self):
         """ Manage Pause functionality and stop plot if requested or at certain errors """
@@ -1465,7 +1603,11 @@ class AxiDraw(inkex.Effect):
             return  # Plot is already stopped. No need to proceed.
 
         if serial_utils.is_grbl(self.plot_status) and not self.options.preview:
-            status_line = serial_utils.grbl_query_status(self.plot_status, timeout_s=0.15)
+            status_age = time.time() - float(getattr(
+                self.plot_status, "grbl_last_status_timestamp", 0) or 0)
+            status_line = None
+            if status_age > 0.8:
+                status_line = serial_utils.grbl_query_status(self.plot_status, timeout_s=0.12)
             if status_line and status_line.startswith("<Alarm"):
                 self.user_message_fun(gettext.gettext(
                     "Plot paused because the Grbl controller reported ALARM state."))
@@ -1529,6 +1671,19 @@ class AxiDraw(inkex.Effect):
         """ Connect to AxiDraw over USB """
         if serial_utils.connect(self.options, self.plot_status, self.user_message_fun, logger):
             self.connected = True  # Variable available in the Python interactive API.
+            if serial_utils.is_grbl(self.plot_status) and not self.options.preview:
+                timeout_s = max(4.0, float(getattr(self.options, "grbl_command_timeout", 2.0)) * 3.0)
+                self._capture_grbl_origin_snapshot(timeout_s)
+                if bool(getattr(self.params, "grbl_zero_xy_on_connect", True)):
+                    ok_zero, _lines = serial_utils.grbl_send(
+                        self.plot_status, "G92 X0 Y0", expect_ok=True, timeout_s=timeout_s)
+                    if ok_zero:
+                        self.plot_status.grbl_xy_zeroed = True
+                        self.pen.phys.xpos = 0.0
+                        self.pen.phys.ypos = 0.0
+                        self.user_message_fun(gettext.gettext("已将当前位置设为原点。"))
+                    else:
+                        self.user_message_fun(gettext.gettext("设置当前位置为原点失败。"))
         else:
             self.plot_status.stopped = 101 # Will become exit code 101; failed to connect
 
@@ -1566,20 +1721,17 @@ class AxiDraw(inkex.Effect):
             if self.options.const_speed:
                 self.speed_pendown = self.speed_pendown * self.params.const_speed_factor_lr
         if serial_utils.is_grbl(self.plot_status) and not self.options.preview:
-            timeout_s = max(1.0, float(self.options.grbl_command_timeout))
+            timeout_s = max(4.0, float(self.options.grbl_command_timeout) * 3.0)
             ok_init, failed_cmd, _result = serial_utils.grbl_initialize_motion(
                 self.plot_status,
                 timeout_s=timeout_s,
-                zero_z=True,
-                zero_xy=bool(getattr(self.params, "grbl_zero_xy_on_connect", True)))
+                zero_z=False,
+                zero_xy=False)
             if not ok_init:
                 self.plot_status.stopped = 104
                 logger.error(
                     gettext.gettext(
                         "Failed to initialize Grbl motion mode ({0}).").format(failed_cmd))
-            else:
-                self.pen.phys.xpos = 0.0
-                self.pen.phys.ypos = 0.0
         # ebb_serial.command(self.plot_status.port, "CU,3,1\r") # EBB 2.8.1+: Enable data-low LED
 
     def query_ebb_voltage(self):

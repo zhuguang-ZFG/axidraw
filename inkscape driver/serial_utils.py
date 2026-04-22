@@ -269,6 +269,7 @@ def _connect_grbl(options, plot_status, message_fun, logger):
                 plot_status.port_name = port_name
                 plot_status.grbl_status = None
                 plot_status.grbl_settings = {}
+                grbl_reset_stream_state(plot_status, clear_io=True)
                 plot_status.fw_version = _extract_grbl_version(id_lines)
                 plot_status.grbl_axis_swap_xy = bool(getattr(options, "grbl_axis_swap_xy", False))
                 plot_status.grbl_axis_invert_x = bool(getattr(options, "grbl_axis_invert_x", False))
@@ -396,6 +397,21 @@ def _grbl_prepare_after_open(port):
     time.sleep(0.18)
     # Drain any startup banner like: "Grbl ... ['$' for help]"
     _read_available_lines(port)
+
+
+def grbl_reset_stream_state(plot_status, clear_io=False):
+    """Reset tracked Grbl stream bookkeeping, optionally clearing serial buffers."""
+    plot_status.grbl_pending_lengths = []
+    plot_status.grbl_stream_error = None
+    if clear_io and plot_status.port is not None:
+        try:
+            reset_input_buffer(plot_status.port)
+        except Exception:
+            pass
+        try:
+            plot_status.port.reset_output_buffer()
+        except Exception:
+            pass
 
 
 def _grbl_handshake_with_retries(port, timeout_s=2.0, attempts=3):
@@ -550,6 +566,10 @@ def disconnect_port(plot_status):
         except Exception:
             pass
     plot_status.port = None
+    if is_grbl(plot_status):
+        plot_status.grbl_motion_mode_ready = False
+        plot_status.grbl_xy_zeroed = False
+        plot_status.grbl_z_zeroed = False
 
 
 def reset_input_buffer(port):
@@ -622,6 +642,13 @@ def _grbl_drain_incoming(plot_status):
     return lines
 
 
+def _grbl_write_payload(plot_status, payload, flush=False):
+    """Write raw bytes to the serial port; optionally wait for driver flush."""
+    plot_status.port.write(payload)
+    if flush:
+        plot_status.port.flush()
+
+
 def _grbl_wait_for_buffer_space(plot_status, payload_len, timeout_s=3.0):
     """Wait until tracked Grbl RX usage leaves room for one more line."""
     reserve = 4
@@ -669,8 +696,7 @@ def grbl_queue_motion(plot_status, command, timeout_s=3.0):
         return False, [error_line or "stream_timeout"]
 
     try:
-        plot_status.port.write(payload)
-        plot_status.port.flush()
+        _grbl_write_payload(plot_status, payload, flush=False)
     except Exception:
         return False, ["stream_exception"]
 
@@ -697,8 +723,7 @@ def grbl_send_result(plot_status, command, expect_ok=True, timeout_s=2.0):
                 if error_line:
                     return {"ok": False, "kind": "stream_error", "lines": [error_line]}
                 return {"ok": False, "kind": "stream_timeout", "lines": []}
-        plot_status.port.write(payload)
-        plot_status.port.flush()
+        _grbl_write_payload(plot_status, payload, flush=expect_ok)
         if not expect_ok:
             return {"ok": True, "kind": "sent", "lines": lines}
         end = time.time() + timeout_s
@@ -734,8 +759,18 @@ def grbl_send(plot_status, command, expect_ok=True, timeout_s=2.0):
 
 def grbl_initialize_motion(plot_status, timeout_s=2.0, zero_z=True, zero_xy=False):
     """Initialize controller motion mode for plotting/pen moves."""
+    need_motion_mode = not bool(getattr(plot_status, "grbl_motion_mode_ready", False))
+    need_zero_xy = bool(zero_xy and not getattr(plot_status, "grbl_xy_zeroed", False))
+    need_zero_z = bool(zero_z and not getattr(plot_status, "grbl_z_zeroed", False))
+    if not (need_motion_mode or need_zero_xy or need_zero_z):
+        return True, None, None
+
+    grbl_reset_stream_state(plot_status, clear_io=False)
+    _grbl_drain_incoming(plot_status)
     status_line = grbl_query_status(plot_status, timeout_s=min(timeout_s, 0.8))
     state = grbl_status_state(status_line)
+    if state and not state.startswith("Idle"):
+        grbl_wait_idle(plot_status, timeout_s=max(2.0, timeout_s * 2.0))
     if state and (state.startswith("Hold") or state.startswith("Alarm")):
         unlock_result = grbl_send_result(
             plot_status,
@@ -747,19 +782,27 @@ def grbl_initialize_motion(plot_status, timeout_s=2.0, zero_z=True, zero_xy=Fals
         if not grbl_wait_idle(plot_status, timeout_s=max(1.0, timeout_s)):
             return False, "wait_idle", {"ok": False, "kind": "busy", "lines": [state]}
 
-    commands = ["G90", "G21"]
-    if zero_xy:
+    commands = []
+    if need_motion_mode:
+        commands.extend(["G90", "G21"])
+    if need_zero_xy:
         commands.append("G92 X0 Y0")
-    if zero_z:
+    if need_zero_z:
         commands.append("G92 Z0")
     for command in commands:
         result = grbl_send_result(
             plot_status,
             command,
             expect_ok=True,
-            timeout_s=timeout_s)
+            timeout_s=max(4.0, timeout_s * 3.0))
         if not result["ok"]:
             return False, command, result
+        if command == "G90" or command == "G21":
+            plot_status.grbl_motion_mode_ready = True
+        elif command == "G92 X0 Y0":
+            plot_status.grbl_xy_zeroed = True
+        elif command == "G92 Z0":
+            plot_status.grbl_z_zeroed = True
     grbl_query_status(plot_status, timeout_s=min(timeout_s, 0.8))
     return True, None, None
 
@@ -819,16 +862,19 @@ def grbl_status_state(status_line):
 
 def grbl_get_positions(plot_status, timeout_s=0.8):
     """
-    Query and return both MPos/WPos in logical inches.
-    Returns dict like {"mpos": (x, y) or None, "wpos": (x, y) or None, "state": str or None}
+    Query and return both MPos/WPos in logical and physical inches.
     """
     status_line = grbl_query_status(plot_status, timeout_s=timeout_s)
     if not status_line:
         return {"mpos": getattr(plot_status, "grbl_mpos_in", None),
                 "wpos": getattr(plot_status, "grbl_wpos_in", None),
+                "mpos_phys": getattr(plot_status, "grbl_mpos_phys_in", None),
+                "wpos_phys": getattr(plot_status, "grbl_wpos_phys_in", None),
                 "state": None}
     return {"mpos": getattr(plot_status, "grbl_mpos_in", None),
             "wpos": getattr(plot_status, "grbl_wpos_in", None),
+            "mpos_phys": getattr(plot_status, "grbl_mpos_phys_in", None),
+            "wpos_phys": getattr(plot_status, "grbl_wpos_phys_in", None),
             "state": grbl_status_state(status_line)}
 
 
@@ -866,11 +912,17 @@ def _update_grbl_position_cache(plot_status, status_line):
     mpos = _extract_axis_from_status(status_line, "M")
     wpos = _extract_axis_from_status(status_line, "W")
     if mpos is not None:
+        plot_status.grbl_mpos_phys_in = (
+            mpos[0] / 25.4,
+            mpos[1] / 25.4)
         plot_status.grbl_mpos_in = _axis_map_in(
             plot_status,
             mpos[0] / 25.4,
             mpos[1] / 25.4)
     if wpos is not None:
+        plot_status.grbl_wpos_phys_in = (
+            wpos[0] / 25.4,
+            wpos[1] / 25.4)
         plot_status.grbl_wpos_in = _axis_map_in(
             plot_status,
             wpos[0] / 25.4,
@@ -1000,6 +1052,14 @@ def grbl_move_linear(plot_status, x_in, y_in, feed_in_s, rapid=False, timeout_s=
     else:
         feed_mm_min = max(feed_in_s * 25.4 * 60.0, 1.0)
         cmd = f"G1 X{x_mm:.3f} Y{y_mm:.3f} F{feed_mm_min:.2f}"
+    return grbl_send(plot_status, cmd, expect_ok=True, timeout_s=timeout_s)
+
+
+def grbl_move_machine_linear(plot_status, x_in, y_in, rapid=True, timeout_s=3.0):
+    """Absolute XY move in machine coordinates (G53), using physical inches as input."""
+    x_mm = x_in * 25.4
+    y_mm = y_in * 25.4
+    cmd = f"G53 G0 X{x_mm:.3f} Y{y_mm:.3f}" if rapid else f"G53 G1 X{x_mm:.3f} Y{y_mm:.3f}"
     return grbl_send(plot_status, cmd, expect_ok=True, timeout_s=timeout_s)
 
 

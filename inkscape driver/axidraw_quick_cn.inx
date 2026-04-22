@@ -56,6 +56,7 @@
   <option value="disable_xy">失能电机</option>
   <option value="ports_scan">扫描串口列表</option>
   <option value="axis_read">读取 Grbl 轴设置</option>
+  <option value="set_origin_here">将当前点设为原点</option>
   <option value="none">不执行动作</option>
 </param>
 <param name="dist" type="float" precision="3" min="0.001" max="100000"

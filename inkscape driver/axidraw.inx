@@ -38,6 +38,7 @@
         <option value="status_refresh">读取当前位置/状态</option>
         <option value="ports_scan">扫描串口列表</option>
         <option value="axis_read">读取坐标轴设置</option>
+        <option value="set_origin_here">将当前点设为原点</option>
         <option value="walk_mmy_pos">Y+ 点动</option>
         <option value="walk_mmy_neg">Y- 点动</option>
         <option value="walk_mmx_neg">X- 点动</option>

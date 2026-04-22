@@ -245,11 +245,18 @@ class PenHandler:
         if ad_ref.options.preview:
             ad_ref.preview.v_chart.rest(ad_ref, v_time)
         elif serial_utils.is_grbl(ad_ref.plot_status):
+            barrier_timeout = max(15.0, float(ad_ref.options.grbl_command_timeout) * 8.0)
+            if not serial_utils.grbl_flush_motion(
+                    ad_ref.plot_status, timeout_s=barrier_timeout, wait_idle=True):
+                ad_ref.plot_status.stopped = 104
+                ad_ref.user_message_fun(
+                    "Grbl motion queue did not drain before pen-up; plotting stopped.")
+                return
             result = serial_utils.grbl_send_result(
                 ad_ref.plot_status,
                 ad_ref.params.grbl_pen_up_cmd,
                 expect_ok=True,
-                timeout_s=max(1.0, float(ad_ref.options.grbl_command_timeout)))
+                timeout_s=max(3.0, float(ad_ref.options.grbl_command_timeout) * 4.0))
             if not result["ok"]:
                 ad_ref.plot_status.stopped = 104
                 ad_ref.user_message_fun(
@@ -290,6 +297,13 @@ class PenHandler:
         if ad_ref.options.preview:
             ad_ref.preview.v_chart.rest(ad_ref, v_time)
         elif serial_utils.is_grbl(ad_ref.plot_status):
+            barrier_timeout = max(15.0, float(ad_ref.options.grbl_command_timeout) * 8.0)
+            if not serial_utils.grbl_flush_motion(
+                    ad_ref.plot_status, timeout_s=barrier_timeout, wait_idle=True):
+                ad_ref.plot_status.stopped = 104
+                ad_ref.user_message_fun(
+                    "Grbl motion queue did not drain before pen-down; plotting stopped.")
+                return
             pen_down_cmd = self._with_grbl_feed_override(
                 ad_ref.params.grbl_pen_down_cmd,
                 getattr(ad_ref.params, "grbl_pen_down_slow_feed", 0.0))
@@ -297,7 +311,7 @@ class PenHandler:
                 ad_ref.plot_status,
                 pen_down_cmd,
                 expect_ok=True,
-                timeout_s=max(1.0, float(ad_ref.options.grbl_command_timeout)))
+                timeout_s=max(3.0, float(ad_ref.options.grbl_command_timeout) * 4.0))
             if not result["ok"]:
                 ad_ref.plot_status.stopped = 104
                 ad_ref.user_message_fun(
@@ -478,7 +492,7 @@ class PenHandler:
             if ad_ref.options.mode in ("toggle", "cycle") or\
                 (ad_ref.options.mode == "manual" and ad_ref.options.manual_cmd == "lower_pen"):
                 self.pen_lower(ad_ref)
-            else:
+            elif self.phys.z_up is not True:
                 self.pen_raise(ad_ref)
             return
 

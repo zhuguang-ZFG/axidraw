@@ -145,8 +145,8 @@ def feed_sm(ad_ref, move, drip_logger):
                 return
             status_age = time.time() - float(getattr(ad_ref.plot_status,
                 "grbl_last_status_timestamp", 0) or 0)
-            if status_age > 0.25 and ad_ref.options.mode != "manual":
-                serial_utils.grbl_query_status(ad_ref.plot_status, timeout_s=0.15)
+            if status_age > 1.2 and ad_ref.options.mode != "manual":
+                serial_utils.grbl_query_status(ad_ref.plot_status, timeout_s=0.10)
         else:
             ebb_motion.doXYMove(ad_ref.plot_status.port, move_steps2, move_steps1,\
                 move_time, False)

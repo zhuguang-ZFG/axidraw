@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+<name>将当前点设为原点</name>
+<id>command.evilmadscientist.axidraw_set_origin_here</id>
+<dependency type="extension">org.inkscape.output.svg.inkscape</dependency>
+<dependency type="executable" location="extensions">axidraw_control.py</dependency>
+
+<param name="mode" type="string" gui-hidden="true">manual</param>
+<param name="manual_cmd" type="string" gui-hidden="true">set_origin_here</param>
+<param name="controller" type="string" gui-hidden="true">grbl_esp32</param>
+<param name="port_choice" type="string" gui-hidden="true">auto</param>
+<param name="port" type="string" gui-hidden="true"></param>
+<param name="port_config" type="int" gui-hidden="true">0</param>
+<param name="grbl_baud_rate" type="string" gui-hidden="true">115200</param>
+<param name="grbl_auto_fetch" type="bool" gui-hidden="true">true</param>
+<param name="grbl_command_timeout" type="float" gui-hidden="true">2.0</param>
+<param name="language" type="string" gui-hidden="true">zh_CN</param>
+
+<effect needs-live-preview="false">
+    <object-type>all</object-type>
+    <effects-menu>
+        <submenu name="DynamicNest 工具"/>
+    </effects-menu>
+</effect>
+
+<script>
+<command location="extensions" interpreter="python">axidraw_control.py</command>
+</script>
+
+</inkscape-extension>

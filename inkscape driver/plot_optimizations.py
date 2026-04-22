@@ -365,6 +365,64 @@ def optimize_digest_for_grbl(digest, min_segment, collinear_tolerance):
     return stats
 
 
+def optimize_digest_for_plotter(
+        digest,
+        min_segment,
+        collinear_tolerance,
+        near_dist,
+        simple_path_tolerance,
+        reverse):
+    """
+    Apply a stronger plotter-focused pass inspired by sender-side preprocessors:
+    1. Simplify redundant vertices.
+    2. Remove trivially short flat paths that mostly add chatter/noise.
+    3. Re-connect nearby path ends using a more generous near-distance threshold.
+
+    Returns a dict with counts for logging/reporting.
+    """
+    stats = {
+        "paths_touched": 0,
+        "vertices_removed": 0,
+        "paths_removed": 0,
+        "paths_before_join": 0,
+        "paths_after_join": 0,
+    }
+    if digest is None:
+        return stats
+
+    simplify_stats = optimize_digest_for_grbl(digest, min_segment, collinear_tolerance)
+    stats["paths_touched"] += simplify_stats["paths_touched"]
+    stats["vertices_removed"] += simplify_stats["vertices_removed"]
+
+    short_limit = max(float(simple_path_tolerance), 0.0)
+    if short_limit > 0:
+        for layer_item in digest.layers:
+            filtered_paths = []
+            for path in layer_item.paths:
+                if not path.subpaths or len(path.subpaths) != 1:
+                    filtered_paths.append(path)
+                    continue
+                vertex_list = path.subpaths[0]
+                if len(vertex_list) < 2:
+                    stats["paths_removed"] += 1
+                    continue
+                if len(vertex_list) > 3:
+                    filtered_paths.append(path)
+                    continue
+                path_length = path.length()
+                if path_length < short_limit:
+                    stats["paths_removed"] += 1
+                    continue
+                filtered_paths.append(path)
+            layer_item.paths = filtered_paths
+
+    stats["paths_before_join"] = sum(len(layer_item.paths) for layer_item in digest.layers)
+    if near_dist > 0:
+        connect_nearby_ends(digest, reverse, near_dist)
+    stats["paths_after_join"] = sum(len(layer_item.paths) for layer_item in digest.layers)
+    return stats
+
+
 def auto_sparse_linework(
         digest,
         spacing_threshold,

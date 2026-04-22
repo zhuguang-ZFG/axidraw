@@ -527,8 +527,12 @@ class PlotStatus:
         self.port_name = None
         self.grbl_settings = {}
         self.grbl_status = None
+        self.grbl_mpos_phys_in = None
+        self.grbl_wpos_phys_in = None
         self.grbl_mpos_in = None
         self.grbl_wpos_in = None
+        self.grbl_saved_origin_phys_in = None
+        self.grbl_saved_origin_work_in = None
         self.grbl_axis_swap_xy = False
         self.grbl_axis_invert_x = False
         self.grbl_axis_invert_y = False
@@ -536,6 +540,9 @@ class PlotStatus:
         self.grbl_pending_lengths = []
         self.grbl_last_status_timestamp = 0
         self.grbl_stream_error = None
+        self.grbl_motion_mode_ready = False
+        self.grbl_xy_zeroed = False
+        self.grbl_z_zeroed = False
         for key in self.CONFIG_ITEMS: # Create instance variables in __init__
             setattr(self, key, False)
         for key in self.VERSION_ITEMS: # Create instance variables in __init__
@@ -552,8 +559,12 @@ class PlotStatus:
         self.port_name = None
         self.grbl_settings = {}
         self.grbl_status = None
+        self.grbl_mpos_phys_in = None
+        self.grbl_wpos_phys_in = None
         self.grbl_mpos_in = None
         self.grbl_wpos_in = None
+        self.grbl_saved_origin_phys_in = None
+        self.grbl_saved_origin_work_in = None
         self.grbl_axis_swap_xy = False
         self.grbl_axis_invert_x = False
         self.grbl_axis_invert_y = False
@@ -561,6 +572,9 @@ class PlotStatus:
         self.grbl_pending_lengths = []
         self.grbl_last_status_timestamp = 0
         self.grbl_stream_error = None
+        self.grbl_motion_mode_ready = False
+        self.grbl_xy_zeroed = False
+        self.grbl_z_zeroed = False
         self.stopped = 0 # Default value 0 ("not stopped")
         self.delay_between_copies = False
 
