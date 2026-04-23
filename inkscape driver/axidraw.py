@@ -390,7 +390,10 @@ class AxiDraw(inkex.Effect):
 
     def _grbl_stream_flush_interval(self):
         """Return how many streamed pen-down segments to queue before flushing."""
-        return max(8, int(getattr(self.params, "grbl_stream_flush_interval", 96)))
+        base_value = max(8, int(getattr(self.params, "grbl_stream_flush_interval", 96)))
+        if getattr(self.plot_status, "grbl_is_bluetooth", False):
+            return max(base_value, 192)
+        return base_value
 
     def _grbl_long_path_log_threshold(self):
         """Return vertex count above which we log sender-side long-path chunking."""
@@ -398,7 +401,10 @@ class AxiDraw(inkex.Effect):
 
     def _grbl_path_chunk_vertices(self):
         """Return maximum vertices per continuous Grbl polyline chunk."""
-        return max(64, int(getattr(self.params, "grbl_path_chunk_vertices", 480)))
+        base_value = max(64, int(getattr(self.params, "grbl_path_chunk_vertices", 480)))
+        if getattr(self.plot_status, "grbl_is_bluetooth", False):
+            return max(base_value, 720)
+        return base_value
 
     def _iter_polyline_chunks(self, vertex_list):
         """

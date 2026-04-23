@@ -222,10 +222,20 @@ def _connect_grbl(options, plot_status, message_fun, logger):
     if not preferred_ports and "COM3" in usb_discovered_ports:
         preferred_ports.append("COM3")
 
-    for pass_index in range(3):
+    connect_passes = 2 if (bt_discovered_ports and not options.port and (
+        not dropdown_port or str(dropdown_port).lower() == "auto")) else 3
+
+    for pass_index in range(connect_passes):
         for port_name in preferred_ports:
+            if (bt_discovered_ports and not options.port and (
+                    not dropdown_port or str(dropdown_port).lower() == "auto") and
+                    pass_index == 0 and port_name not in bt_discovered_ports):
+                continue
             port = None
-            for _attempt in range(4):
+            record = discovered_record_map.get(port_name)
+            is_bt_candidate = bool(record and _is_bluetooth_serial_record(record))
+            open_attempts = 2 if is_bt_candidate else 4
+            for _attempt in range(open_attempts):
                 exc_text = None
                 exc_obj = None
                 try:
@@ -234,6 +244,10 @@ def _connect_grbl(options, plot_status, message_fun, logger):
                         baudrate=baud_rate,
                         timeout=0.20,
                         write_timeout=0.20)
+                    try:
+                        setattr(port, "_dn_is_bluetooth", is_bt_candidate)
+                    except Exception:
+                        pass
                     break
                 except Exception as exc:
                     exc_obj = exc
@@ -243,7 +257,7 @@ def _connect_grbl(options, plot_status, message_fun, logger):
                     if ("access is denied" in lower_text) or ("permission" in lower_text):
                         if port_name not in busy_ports:
                             busy_ports.append(port_name)
-                    time.sleep(0.20 if pass_index == 0 else 0.40)
+                    time.sleep(0.12 if is_bt_candidate else (0.20 if pass_index == 0 else 0.40))
             if port is None:
                 continue
 
@@ -253,7 +267,7 @@ def _connect_grbl(options, plot_status, message_fun, logger):
                 ok, id_lines = _grbl_handshake_with_retries(
                     port,
                     timeout_s=handshake_timeout_s,
-                    attempts=3 if pass_index < 2 else 4)
+                    attempts=2 if is_bt_candidate else (3 if pass_index < 2 else 4))
                 if not ok:
                     if port_name not in handshake_fail_ports:
                         handshake_fail_ports.append(port_name)
@@ -262,7 +276,7 @@ def _connect_grbl(options, plot_status, message_fun, logger):
                         port.close()
                     except Exception:
                         pass
-                    time.sleep(0.25 if pass_index == 0 else 0.45)
+                    time.sleep(0.15 if is_bt_candidate else (0.25 if pass_index == 0 else 0.45))
                     continue
 
                 plot_status.port = port
@@ -275,7 +289,6 @@ def _connect_grbl(options, plot_status, message_fun, logger):
                 plot_status.grbl_axis_swap_xy = bool(getattr(options, "grbl_axis_swap_xy", False))
                 plot_status.grbl_axis_invert_x = bool(getattr(options, "grbl_axis_invert_x", False))
                 plot_status.grbl_axis_invert_y = bool(getattr(options, "grbl_axis_invert_y", False))
-                record = discovered_record_map.get(port_name)
                 plot_status.grbl_is_bluetooth = bool(record and _is_bluetooth_serial_record(record))
 
                 if getattr(options, "grbl_auto_fetch", True) and not plot_status.grbl_is_bluetooth:
@@ -293,8 +306,8 @@ def _connect_grbl(options, plot_status, message_fun, logger):
                     port.close()
                 except Exception:
                     pass
-        if pass_index < 2 and preferred_ports:
-            time.sleep(0.70 if pass_index == 0 else 1.0)
+        if pass_index < (connect_passes - 1) and preferred_ports:
+            time.sleep(0.35 if bt_discovered_ports else (0.70 if pass_index == 0 else 1.0))
 
     if selected_port:
         message_fun(_("Failed to connect to Grbl controller at the selected port."))
@@ -352,18 +365,33 @@ def sanitize_grbl_option_defaults(options, message_fun=None):
         options.grbl_set_homing_dir_mask = -1
 
 
+def _port_prefers_nonblocking_flush(port):
+    """Return True when serial flush should be avoided because it may block badly."""
+    return bool(getattr(port, "_dn_is_bluetooth", False))
+
+
+def _maybe_flush_serial(port):
+    """Flush writes unless this port is known to stall badly on flush()."""
+    if _port_prefers_nonblocking_flush(port):
+        return
+    try:
+        port.flush()
+    except Exception:
+        pass
+
+
 def _grbl_handshake(port, timeout_s=2.0):
     """Return (ok, lines)."""
     lines = []
     try:
         reset_input_buffer(port)
         port.write(b"\r\n")
-        port.flush()
+        _maybe_flush_serial(port)
         time.sleep(0.20)
         lines.extend(_read_available_lines(port))
 
         port.write(b"$I\n")
-        port.flush()
+        _maybe_flush_serial(port)
         end = time.time() + timeout_s
         while time.time() < end:
             new_lines = _read_available_lines(port)
@@ -434,15 +462,15 @@ def _grbl_handshake_with_retries(port, timeout_s=2.0, attempts=3):
         # Recovery path: clear alarm/hold and request status before next try.
         try:
             port.write(b"\x18")  # Ctrl-X soft reset
-            port.flush()
+            _maybe_flush_serial(port)
             time.sleep(0.15)
             _read_available_lines(port)
             port.write(b"$X\n")
-            port.flush()
+            _maybe_flush_serial(port)
             time.sleep(0.10)
             _read_available_lines(port)
             port.write(b"?")
-            port.flush()
+            _maybe_flush_serial(port)
             time.sleep(0.08)
             _read_available_lines(port)
         except Exception:
@@ -455,7 +483,7 @@ def _grbl_status_probe(port, timeout_s=1.0):
     """Return True if realtime status returns a '<...>' frame."""
     try:
         port.write(b"?")
-        port.flush()
+        _maybe_flush_serial(port)
         end = time.time() + timeout_s
         while time.time() < end:
             for line in _read_available_lines(port):
@@ -473,7 +501,7 @@ def _grbl_settings_probe(port, timeout_s=2.0):
     setting_re = re.compile(r"^\$(\d+)\s*=\s*([^\s]+)")
     try:
         port.write(b"$$\n")
-        port.flush()
+        _maybe_flush_serial(port)
         end = time.time() + timeout_s
         saw_setting = False
         while time.time() < end:
@@ -653,7 +681,7 @@ def _grbl_write_payload(plot_status, payload, flush=False):
     """Write raw bytes to the serial port; optionally wait for driver flush."""
     plot_status.port.write(payload)
     if flush:
-        plot_status.port.flush()
+        _maybe_flush_serial(plot_status.port)
 
 
 def grbl_send_realtime(plot_status, payload, flush=True):
@@ -879,7 +907,7 @@ def grbl_query_status(plot_status, timeout_s=0.5):
         return None
     try:
         plot_status.port.write(b"?")
-        plot_status.port.flush()
+        _maybe_flush_serial(plot_status.port)
         end = time.time() + timeout_s
         last = None
         while time.time() < end:
