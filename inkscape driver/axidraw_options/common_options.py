@@ -216,6 +216,14 @@ def core_options(config):
                         type=inkex.boolean_option, action="store", dest="pen_change_to_home",\
                         default=config.get("pen_change_to_home", True),\
                         help="Move to home during pen change flow.")
+    options.add_argument("--grbl_zero_xy_on_connect",\
+                        type=inkex.boolean_option, action="store", dest="grbl_zero_xy_on_connect",\
+                        default=config.get("grbl_zero_xy_on_connect", True),\
+                        help="Set current XY as working origin after connecting to the Grbl controller.")
+    options.add_argument("--grbl_return_to_origin_after_plot",\
+                        type=inkex.boolean_option, action="store", dest="grbl_return_to_origin_after_plot",\
+                        default=config.get("grbl_return_to_origin_after_plot", True),\
+                        help="Return to the working origin after a successful plot.")
     options.add_argument("--pen_change_prompt",\
                         type=inkex.boolean_option, action="store", dest="pen_change_prompt",\
                         default=config.get("pen_change_prompt", True),\

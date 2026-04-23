@@ -53,7 +53,7 @@
 <label xml:space="preserve">如果你的装机方向不同，可以优先改“逻辑原点模式”，再微调反转/对调开关。</label>
 </page>
 
-<page name="manual" gui-text="手动控制">
+<page name="manual" gui-text="快速轴控">
 <label appearance="header">快速轴控</label>
 <label xml:space="preserve">这页优先放常用点动和原点操作；选一个动作再点“应用”。诊断项放后面，日常控制更顺手。</label>
 <label>前面是日常控制项；靠后的“读取状态/扫描串口/读取轴设置/读固件”属于诊断项。</label>
@@ -102,7 +102,7 @@ gui-text="连续点动次数：">1</param>
 
 <page name="res_home" gui-text="回零">
 <label appearance="header">仅回工作原点</label>
-<label xml:space="preserve">用于把机器回到当前工作原点，不继续绘图。如果你的机器还没完成机械归位，请先去“手动控制”页执行“机械归位（$H）”。插件内部若需要回机器原点快照，会按 G53/机器坐标单独处理，不受这里的轴映射影响。</label>
+<label xml:space="preserve">用于把机器回到当前工作原点，不继续绘图。如果你的机器还没完成机械归位，请先去“快速轴控”页执行“机械归位（$H）”。插件内部若需要回机器原点快照，会按 G53/机器坐标单独处理，不受这里的轴映射影响。</label>
 <spacer />
 </page>
 

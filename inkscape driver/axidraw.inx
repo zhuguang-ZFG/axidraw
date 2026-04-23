@@ -30,7 +30,7 @@
       <label>提示：份数设为 0 表示连续绘图。</label>
     </page>
 
-    <page name="manual" gui-text="手动控制">
+    <page name="manual" gui-text="快速轴控">
       <label appearance="header">快速轴控</label>
       <label xml:space="preserve">这页优先放常用点动和原点操作；选一个动作后点击“应用”。诊断项放在后面，减少来回找按钮。</label>
       <label>上半部分是日常控制项；靠后的“读取状态/扫描串口/读取轴设置/读固件”属于诊断项。</label>
@@ -158,7 +158,7 @@
         <option value="plot">继续绘图</option>
         <option value="home">仅回工作原点</option>
       </param>
-      <label xml:space="preserve">继续绘图会读取 SVG 中保存的恢复信息。若只是想让机器回到工作原点，请选择“仅回工作原点”。如果需要机械归位，请到“手动控制”页执行“机械归位（$H）”；若需要回机器原点快照，则由插件内部按 G53/机器坐标处理。</label>
+      <label xml:space="preserve">继续绘图会读取 SVG 中保存的恢复信息。若只是想让机器回到工作原点，请选择“仅回工作原点”。如果需要机械归位，请到“快速轴控”页执行“机械归位（$H）”；若需要回机器原点快照，则由插件内部按 G53/机器坐标处理。</label>
     </page>
 
     <page name="sysinfo" gui-text="系统信息">

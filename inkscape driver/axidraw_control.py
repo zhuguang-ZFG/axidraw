@@ -27,6 +27,7 @@ Requires Python 3.7 or newer
 from importlib import import_module
 import logging
 # import threading
+import sys
 import time
 import signal
 from threading import Event
@@ -280,6 +281,14 @@ class AxiDrawWrapperClass( inkex.Effect ):
 
     def parseFile(self, input_file):
         self.parse(input_file)
+
+    def output(self):
+        """Serialize the wrapped AxiDraw result back to Inkscape."""
+        outdoc = getattr(self, "outdoc", None)
+        if outdoc:
+            sys.stdout.write(outdoc)
+            return
+        super().output()
 
 if __name__ == '__main__':
     e = AxiDrawWrapperClass()

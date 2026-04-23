@@ -359,6 +359,21 @@ class AxiDraw(inkex.Effect):
             return "当前坐标模型：以当前点作为工作原点 0,0；先按原点模式解释逻辑坐标方向，再叠加 X/Y 反转与对调；不会重写 G53 机器坐标。"
         return "当前坐标模型：尚未把当前点设为工作原点；先按原点模式解释工作坐标方向，再叠加 X/Y 反转与对调；G53 机器坐标不参与映射。"
 
+    def _sync_plot_status_axis_mapping_from_options(self):
+        """Copy current UI/runtime axis mapping options into plot_status before status messages."""
+        self.plot_status.grbl_coordinate_origin = serial_utils._normalize_coordinate_origin(
+            getattr(self.options, "grbl_coordinate_origin",
+                    getattr(self.params, "grbl_coordinate_origin", "top_left")))
+        self.plot_status.grbl_axis_swap_xy = bool(
+            getattr(self.options, "grbl_axis_swap_xy",
+                    getattr(self.params, "grbl_axis_swap_xy", False)))
+        self.plot_status.grbl_axis_invert_x = bool(
+            getattr(self.options, "grbl_axis_invert_x",
+                    getattr(self.params, "grbl_axis_invert_x", False)))
+        self.plot_status.grbl_axis_invert_y = bool(
+            getattr(self.options, "grbl_axis_invert_y",
+                    getattr(self.params, "grbl_axis_invert_y", False)))
+
     def _grbl_auto_zero_on_connect_enabled(self):
         """Return whether connect should automatically set current XY as work origin."""
         return bool(getattr(
@@ -1015,6 +1030,7 @@ class AxiDraw(inkex.Effect):
             self.plot_status.grbl_xy_zeroed = True
             self.pen.phys.xpos = 0.0
             self.pen.phys.ypos = 0.0
+            self._sync_plot_status_axis_mapping_from_options()
             self.user_message_fun(gettext.gettext("已将当前点设置为原点。"))
             self.user_message_fun(self._describe_grbl_axis_mapping())
             self.user_message_fun(self._describe_grbl_coordinate_model())
@@ -1558,9 +1574,70 @@ class AxiDraw(inkex.Effect):
             return None
         return min_x, min_y, max_x, max_y
 
+    @staticmethod
+    def _parse_viewbox_string(viewbox_value):
+        """Parse an SVG viewBox string into four floats."""
+        if not viewbox_value:
+            return None
+        try:
+            parts = [float(part) for part in str(viewbox_value).replace(",", " ").split()]
+        except Exception:
+            return None
+        if len(parts) != 4:
+            return None
+        return tuple(parts)
+
+    def _get_or_create_machine_sync_wrapper(self, source_viewbox):
+        """Create a top-level wrapper used to map the old page space into machine mm space."""
+        wrapper_id = "dn-machine-sync-root"
+        wrapper = None
+        for child in list(self.svg):
+            if not isinstance(child.tag, str):
+                continue
+            if child.get("id") == wrapper_id and child.get("data-dn-sync-wrapper") == "1":
+                wrapper = child
+                break
+
+        source_viewbox_text = " ".join(f"{value:.6f}" for value in source_viewbox)
+
+        if wrapper is None:
+            wrapper = etree.Element(f"{{{inkex.NSS['svg']}}}g")
+            wrapper.set("id", wrapper_id)
+            wrapper.set("data-dn-sync-wrapper", "1")
+            wrapper.set("data-dn-sync-source-viewbox", source_viewbox_text)
+
+            insert_index = 0
+            for index, child in enumerate(list(self.svg)):
+                if not isinstance(child.tag, str):
+                    continue
+                local_name = etree.QName(child).localname
+                if local_name in ("defs", "namedview", "metadata"):
+                    insert_index = index + 1
+
+            self.svg.insert(insert_index, wrapper)
+
+            for child in list(self.svg):
+                if child is wrapper or not isinstance(child.tag, str):
+                    continue
+                local_name = etree.QName(child).localname
+                if local_name in ("defs", "namedview", "metadata"):
+                    continue
+                self.svg.remove(child)
+                wrapper.append(child)
+        elif not wrapper.get("data-dn-sync-source-viewbox"):
+            wrapper.set("data-dn-sync-source-viewbox", source_viewbox_text)
+
+        return wrapper
+
     def _sync_canvas_to_machine_travel(self):
         """Update SVG canvas to machine travel and uniformly fit the drawing to that canvas."""
         self.svg = self.document.getroot()
+        debug_origin = getattr(self.options, "grbl_coordinate_origin", None)
+        debug_swap = getattr(self.options, "grbl_axis_swap_xy", None)
+        debug_invert_x = getattr(self.options, "grbl_axis_invert_x", None)
+        debug_invert_y = getattr(self.options, "grbl_axis_invert_y", None)
+        self.user_message_fun(
+            f"SYNC_DEBUG 参数: origin={debug_origin}, swap_xy={debug_swap}, invert_x={debug_invert_x}, invert_y={debug_invert_y}")
         self.plot_status.grbl_settings = serial_utils.read_grbl_settings(
             self.plot_status,
             timeout_s=max(1.5, float(getattr(self.options, "grbl_command_timeout", 2.0)) * 1.5))
@@ -1585,52 +1662,134 @@ class AxiDraw(inkex.Effect):
             logger.error(gettext.gettext("当前画布尺寸无效，无法更新画布。"))
             return
 
-        current_viewbox = self.svg.get("viewBox")
-        if current_viewbox:
-            try:
-                parts = [float(part) for part in current_viewbox.replace(",", " ").split()]
-            except Exception:
-                parts = []
-            if len(parts) == 4:
-                vb_min_x, vb_min_y, vb_width, vb_height = parts
-            else:
-                vb_min_x, vb_min_y, vb_width, vb_height = 0.0, 0.0, old_width_mm, old_height_mm
-        else:
-            vb_min_x = 0.0
-            vb_min_y = 0.0
-            vb_width = self.svg_width * float(plot_utils.PX_PER_INCH)
-            vb_height = self.svg_height * float(plot_utils.PX_PER_INCH)
+        current_viewbox = self._parse_viewbox_string(self.svg.get("viewBox"))
+        if current_viewbox is None:
+            current_viewbox = (
+                0.0,
+                0.0,
+                self.svg_width * float(plot_utils.PX_PER_INCH),
+                self.svg_height * float(plot_utils.PX_PER_INCH),
+            )
+        vb_min_x, vb_min_y, vb_width, vb_height = current_viewbox
 
         if vb_width <= 0 or vb_height <= 0:
             logger.error(gettext.gettext("当前 viewBox 无效，无法更新画布。"))
             return
 
-        scale_factor = min(x_max_mm / old_width_mm, y_max_mm / old_height_mm)
+        wrapper = self._get_or_create_machine_sync_wrapper(current_viewbox)
+        source_viewbox = self._parse_viewbox_string(
+            wrapper.get("data-dn-sync-source-viewbox")) or current_viewbox
+        src_min_x, src_min_y, src_width, src_height = source_viewbox
+        if src_width <= 0 or src_height <= 0:
+            logger.error(gettext.gettext("保存的原始画布坐标无效，无法更新画布。"))
+            return
+
+        scale_factor = min(x_max_mm / src_width, y_max_mm / src_height)
         if scale_factor <= 0:
             logger.error(gettext.gettext("计算整图适配比例失败。"))
             return
 
-        old_phys_scale_x = old_width_mm / vb_width
-        old_phys_scale_y = old_height_mm / vb_height
-        new_vb_width = x_max_mm / max(old_phys_scale_x * scale_factor, 1e-9)
-        new_vb_height = y_max_mm / max(old_phys_scale_y * scale_factor, 1e-9)
+        mapped_width = src_width * scale_factor
+        mapped_height = src_height * scale_factor
+        spare_x = max(0.0, x_max_mm - mapped_width)
+        spare_y = max(0.0, y_max_mm - mapped_height)
+
+        origin_mode = str(getattr(self.options, "grbl_coordinate_origin", "top_left") or "top_left")
+        if origin_mode == "top_right":
+            offset_x = spare_x
+            offset_y = 0.0
+        elif origin_mode == "bottom_left":
+            offset_x = 0.0
+            offset_y = spare_y
+        elif origin_mode == "bottom_right":
+            offset_x = spare_x
+            offset_y = spare_y
+        elif origin_mode == "center":
+            offset_x = spare_x / 2.0
+            offset_y = spare_y / 2.0
+        else:
+            offset_x = 0.0
+            offset_y = 0.0
+
+        translate_x = offset_x - (src_min_x * scale_factor)
+        translate_y = offset_y - (src_min_y * scale_factor)
 
         self.svg.set("width", f"{x_max_mm:.3f}mm")
         self.svg.set("height", f"{y_max_mm:.3f}mm")
-        self.svg.set("viewBox", f"{vb_min_x:.6f} {vb_min_y:.6f} {new_vb_width:.6f} {new_vb_height:.6f}")
+        self.svg.set("viewBox", f"0.000000 0.000000 {x_max_mm:.6f} {y_max_mm:.6f}")
+        self.svg.set("data-dn-sync-marker", "2026-04-23-sync-debug-2")
+        self.svg.set("data-dn-sync-size", f"{x_max_mm:.3f}x{y_max_mm:.3f}mm")
+        self.svg.set("data-dn-sync-source-viewbox", " ".join(f"{value:.6f}" for value in source_viewbox))
+        wrapper.set(
+            "transform",
+            f"matrix({scale_factor:.9f},0,0,{scale_factor:.9f},{translate_x:.9f},{translate_y:.9f})")
+        wrapper.set("data-dn-sync-last-scale", f"{scale_factor:.9f}")
+        wrapper.set("data-dn-sync-last-offset", f"{translate_x:.9f},{translate_y:.9f}")
 
         namedview = self.svg.xpath('//sodipodi:namedview', namespaces=inkex.NSS)
+        namedview_zoom = None
+        page_debug = None
         if namedview:
             try:
                 namedview[0].set('document-units', 'mm')
+                namedview[0].set('{http://www.inkscape.org/namespaces/inkscape}document-units', 'mm')
+                namedview[0].set('units', 'mm')
+                namedview[0].set('{http://www.inkscape.org/namespaces/inkscape}cx', f"{x_max_mm / 2.0:.6f}")
+                namedview[0].set('{http://www.inkscape.org/namespaces/inkscape}cy', f"{y_max_mm / 2.0:.6f}")
+
+                page_nodes = [
+                    child for child in list(namedview[0])
+                    if isinstance(child.tag, str)
+                    and child.tag == f"{{{inkex.NSS['inkscape']}}}page"
+                ]
+                if page_nodes:
+                    page_node = page_nodes[0]
+                else:
+                    page_node = etree.SubElement(
+                        namedview[0],
+                        f"{{{inkex.NSS['inkscape']}}}page")
+                    page_node.set("id", "dn-machine-page")
+                    page_node.set("{http://www.inkscape.org/namespaces/inkscape}label", "Machine Page")
+                page_node.set("x", "0")
+                page_node.set("y", "0")
+                page_node.set("width", f"{x_max_mm:.6f}")
+                page_node.set("height", f"{y_max_mm:.6f}")
+                page_debug = (
+                    f"page_count={len(page_nodes) if page_nodes else 1}, "
+                    f"page_xywh=({page_node.get('x')}, {page_node.get('y')}, "
+                    f"{page_node.get('width')}, {page_node.get('height')})")
+
+                window_width = float(namedview[0].get('{http://www.inkscape.org/namespaces/inkscape}window-width') or 1280.0)
+                window_height = float(namedview[0].get('{http://www.inkscape.org/namespaces/inkscape}window-height') or 900.0)
+                fit_zoom_x = max(0.1, (window_width - 120.0) / max(x_max_mm, 1e-9))
+                fit_zoom_y = max(0.1, (window_height - 180.0) / max(y_max_mm, 1e-9))
+                namedview_zoom = max(0.1, min(fit_zoom_x, fit_zoom_y) * 0.85)
+                namedview[0].set('{http://www.inkscape.org/namespaces/inkscape}zoom', f"{namedview_zoom:.6f}")
             except Exception:
                 pass
+
+        namedview_units = None
+        namedview_inkscape_units = None
+        if namedview:
+            namedview_units = namedview[0].get('units')
+            namedview_inkscape_units = namedview[0].get('{http://www.inkscape.org/namespaces/inkscape}document-units')
 
         self.user_message_fun(gettext.gettext(
             "已按机器物理行程更新画布，并按当前画布坐标等比适配整图。"))
         self.user_message_fun(gettext.gettext(
             "机器行程：X={0:.3f} mm, Y={1:.3f} mm；整图等比系数：{2:.3f}。").format(
                 x_max_mm, y_max_mm, scale_factor))
+        self.user_message_fun(
+            f"SYNC_DEBUG 已切换到机器毫米坐标 viewBox=0 0 {x_max_mm:.3f} {y_max_mm:.3f}；"
+            f" wrapper_scale={scale_factor:.6f}, wrapper_offset=({translate_x:.3f}, {translate_y:.3f})")
+        self.user_message_fun("SYNC_DEBUG 标记已写入 SVG: data-dn-sync-marker=2026-04-23-sync-debug-2")
+        self.user_message_fun(
+            f"SYNC_DEBUG 回读: width={self.svg.get('width')}, height={self.svg.get('height')}, viewBox={self.svg.get('viewBox')}, namedview_units={namedview_units}, inkscape_document_units={namedview_inkscape_units}")
+        if namedview_zoom is not None:
+            self.user_message_fun(
+                f"SYNC_DEBUG 已更新视图缩放：inkscape:zoom={namedview_zoom:.6f}，目标为尽量铺满当前窗口。")
+        if page_debug is not None:
+            self.user_message_fun(f"SYNC_DEBUG 页面对象回读：{page_debug}")
         if scale_factor < 0.999:
             self.user_message_fun(gettext.gettext(
                 "当前整图已缩小以适配机器画布；若某一边仍留白，这是为了避免非等比拉伸。"))
@@ -2025,6 +2184,7 @@ class AxiDraw(inkex.Effect):
                         self.plot_status.grbl_xy_zeroed = True
                         self.pen.phys.xpos = 0.0
                         self.pen.phys.ypos = 0.0
+                        self._sync_plot_status_axis_mapping_from_options()
                         self.user_message_fun(gettext.gettext("已将当前位置设为原点。"))
                         self.user_message_fun(self._describe_grbl_axis_mapping())
                         self.user_message_fun(self._describe_grbl_coordinate_model())
